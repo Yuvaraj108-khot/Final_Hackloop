@@ -1,0 +1,23 @@
+/* Farmer-friendly theme (big buttons, earthy colors) */
+:root{
+  --bg: #f7f6ef;
+  --panel: #fffef8;
+  --green: #2e7d32;
+  --accent: #d4a017;
+  --muted: #6b6b6b;
+}
+body{font-family:Verdana, Geneva, sans-serif;background:var(--bg);color:#111;margin:0;padding:0}
+.container{max-width:900px;margin:24px auto;padding:18px;background:var(--panel);border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+.header{display:flex;align-items:center;justify-content:space-between}
+.h1{font-size:22px;color:var(--green);font-weight:700}
+.big-icons{display:flex;gap:18px;margin-top:18px}
+.card{flex:1;padding:18px;border-radius:10px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.04);text-align:center;cursor:pointer}
+.card img{width:72px;height:72px;object-fit:contain}
+.btn{display:inline-block;background:var(--green);color:#fff;padding:10px 16px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
+.input{width:100%;padding:10px;border-radius:6px;border:1px solid #ddd;margin:6px 0}
+.row{display:flex;gap:12px}
+.small{font-size:13px;color:var(--muted)}
+.result-card{background:#fff;padding:12px;border-radius:8px;margin-top:12px}
+.center{display:flex;align-items:center;justify-content:center}
+.icon-large{font-size:40px;color:var(--accent)}
+.footer{font-size:13px;color:var(--muted);margin-top:18px;text-align:center}

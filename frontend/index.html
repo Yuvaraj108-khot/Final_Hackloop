@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Farmer Assistant - Login</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="h1">Farmer Assistant</div>
+      <div class="small">Simple tools for soil • weather • disease</div>
+    </div>
+    <h3>Login</h3>
+    <p class="small">Enter your name and phone. No complex signup — just a friendly session for the farmer.</p>
+    <input id="name" class="input" placeholder="Your name">
+    <input id="phone" class="input" placeholder="Phone number">
+    <button class="btn" id="loginBtn">Enter</button>
+    <div class="footer">Made for farmers — big fonts, simple language.</div>
+  </div>
+<script>
+document.getElementById('loginBtn').addEventListener('click', ()=> {
+  const name = document.getElementById('name').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  if (!name || !phone) return alert('Please enter name and phone');
+  sessionStorage.setItem('farmer_name', name);
+  sessionStorage.setItem('farmer_phone', phone);
+  window.location = 'dashboard.html';
+});
+</script>
+</body>
+</html>
