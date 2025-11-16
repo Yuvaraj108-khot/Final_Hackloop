@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Login - Farmer Assistant</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container auth-container">
+    <div class="header">
+      <div class="h1"><span class="emoji">🔐</span> Farmer Assistant</div>
+      <div class="small">Login to your account</div>
+    </div>
+
+    <div class="auth-form">
+      <h3 style="margin-top:0;margin-bottom:16px">Login</h3>
+      <label class="label">Username</label>
+      <input id="username" class="input" type="text" placeholder="Your username" required>
+
+      <label class="label">Password</label>
+      <input id="password" class="input" type="password" placeholder="Password" required>
+      <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
+        <input id="showPwd" type="checkbox"><label for="showPwd" class="small">Show password</label>
+      </div>
+
+      <button id="loginBtn" class="btn">🔓 Log In</button>
+
+      <p class="small">Don't have an account? <a href="signup.html" class="link">Sign up</a></p>
+      <p class="small"><a href="index.html" class="link">Back to Home</a></p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('showPwd').addEventListener('change', (e)=>{
+      document.getElementById('password').type = e.target.checked ? 'text' : 'password';
+    });
+
+    // CSV storage helpers (fields escaped with double-quotes)
+    function escapeField(s){ return '"' + String(s).replace(/"/g,'""') + '"'; }
+    function usersToCSV(users){
+      const lines = ['username,password,phone,email'];
+      for(const u in users){
+        const row = [u, users[u].password||'', users[u].phone||'', users[u].email||'']
+          .map(escapeField).join(',');
+        lines.push(row);
+      }
+      return lines.join('\n');
+    }
+    function parseCSVRow(row){
+      const fields = [];
+      let cur = '';
+      let inQuotes = false;
+      for(let i=0;i<row.length;i++){
+        const ch = row[i];
+        if(inQuotes){
+          if(ch === '"'){
+            if(row[i+1] === '"') { cur += '"'; i++; }
+            else { inQuotes = false; }
+          } else cur += ch;
+        } else {
+          if(ch === ','){ fields.push(cur); cur=''; }
+          else if(ch === '"'){ inQuotes = true; }
+          else cur += ch;
+        }
+      }
+      fields.push(cur);
+      return fields;
+    }
+    function parseCSV(csv){
+      const out = {};
+      if(!csv) return out;
+      const lines = csv.split(/\r?\n/);
+      if(lines.length <= 1) return out;
+      lines.shift(); // header
+      for(const line of lines){
+        if(!line.trim()) continue;
+        const f = parseCSVRow(line);
+        const username = f[0] || '';
+        if(!username) continue;
+        out[username] = { password: f[1]||'', phone: f[2]||'', email: f[3]||'' };
+      }
+      return out;
+    }
+    function loadUsers(){
+      try { return parseCSV(localStorage.getItem('fa_users') || ''); }
+      catch(e){ return {}; }
+    }
+
+    document.getElementById('loginBtn').addEventListener('click', ()=>{
+      const u = document.getElementById('username').value.trim();
+      const p = document.getElementById('password').value;
+      if(!u || !p) return alert('Enter username and password');
+      const users = loadUsers();
+      if(users[u] && users[u].password === p){
+        sessionStorage.setItem('fa_user', JSON.stringify({username:u, email:users[u].email, phone:users[u].phone}));
+        window.location = 'dashboard.html';
+      } else {
+        alert('Invalid username or password. If you are new, please sign up.');
+      }
+    });
+  </script>
+</body>
+</html>

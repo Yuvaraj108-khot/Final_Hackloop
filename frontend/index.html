@@ -8,26 +8,23 @@
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <div class="h1">Farmer Assistant</div>
+    <div class="header" style="flex-direction: column; gap: 8px;">
+      <div class="h1"><span class="emoji">🚜</span> Farmer Assistant</div>
       <div class="small">Simple tools for soil • weather • disease</div>
     </div>
-    <h3>Login</h3>
-    <p class="small">Enter your name and phone. No complex signup — just a friendly session for the farmer.</p>
-    <input id="name" class="input" placeholder="Your name">
-    <input id="phone" class="input" placeholder="Phone number">
-    <button class="btn" id="loginBtn">Enter</button>
+    <div class="center">
+      <div style="max-width:640px;width:100%">
+        <h2>Welcome <span class="emoji">👋</span></h2>
+        <p class="small">Choose how you want to proceed — login for existing users, or sign up for a new account.</p>
+        <div class="row" style="margin-top:16px">
+          <a class="btn" href="login.html" style="flex:1;text-align:center;text-decoration:none;display:inline-block">🔐 Login</a>
+          <a class="btn btn-ghost" href="signup.html" style="flex:1;text-align:center;text-decoration:none;display:inline-block">📝 Sign Up</a>
+        </div>
+      </div>
+    </div>
     <div class="footer">Made for farmers — big fonts, simple language.</div>
   </div>
-<script>
-document.getElementById('loginBtn').addEventListener('click', ()=> {
-  const name = document.getElementById('name').value.trim();
-  const phone = document.getElementById('phone').value.trim();
-  if (!name || !phone) return alert('Please enter name and phone');
-  sessionStorage.setItem('farmer_name', name);
-  sessionStorage.setItem('farmer_phone', phone);
-  window.location = 'dashboard.html';
-});
-</script>
+</body>
+</html>
 </body>
 </html>

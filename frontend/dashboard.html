@@ -9,8 +9,11 @@
 <body>
   <div class="container" id="app">
     <div class="header">
-      <div class="h1">Farmer Assistant</div>
-      <div id="user" class="small"></div>
+      <div class="h1"><span class="emoji">🚜</span> Farmer Assistant</div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div id="user" class="small muted">Welcome back, <strong id="userNameDisplay"></strong></div>
+        <button class="btn btn-ghost" onclick="logout()" style="padding: 6px 10px; font-size: 12px;">🚪 Logout</button>
+      </div>
     </div>
 
     <div id="home">
@@ -18,21 +21,37 @@
       <p class="small">Choose a tool below</p>
       <div class="big-icons">
         <div class="card" onclick="show('soil')">
-          <div class="icon-large">🌱</div>
+          <div class="icon-blob">🌱</div>
           <h4>Soil</h4>
-          <div class="small">Analyze soil and get suggestions</div>
+          <div class="small">Analyze soil and get tailored recommendations</div>
         </div>
         <div class="card" onclick="show('weather')">
-          <div class="icon-large">☁️</div>
+          <div class="icon-blob">☀️</div>
           <h4>Weather</h4>
-          <div class="small">5-day forecast for your area</div>
+          <div class="small">5-day forecast with alerts</div>
         </div>
         <div class="card" onclick="show('disease')">
-          <div class="icon-large">🪴</div>
+          <div class="icon-blob">🪴</div>
           <h4>Disease</h4>
-          <div class="small">Upload plant photo to detect disease</div>
+          <div class="small">Upload a photo to detect plant diseases</div>
+        </div>
+        <div class="card" onclick="show('history')">
+          <div class="icon-blob">📋</div>
+          <h4>History</h4>
+          <div class="small">View past analyses and results</div>
         </div>
       </div>
+    </div>
+
+    <div id="history" style="display:none">
+      <button class="btn" onclick="back()">← Back</button>
+      <h3>📋 History</h3>
+      <div class="history-tabs">
+        <button class="history-tab-btn active" onclick="showHistoryTab('soil')">🌱 Soil</button>
+        <button class="history-tab-btn" onclick="showHistoryTab('weather')">☀️ Weather</button>
+        <button class="history-tab-btn" onclick="showHistoryTab('disease')">🪴 Disease</button>
+      </div>
+      <div id="historyContent" class="result-card"></div>
     </div>
 
     <div id="soil" style="display:none">
@@ -90,18 +109,32 @@
   </div>
 
 <script>
-const userName = sessionStorage.getItem('farmer_name') || 'Farmer';
-document.getElementById('user').innerText = userName;
+// Determine username: prefer fa_user (from new auth), fallback to farmer_name (old simple flow)
+let userName = 'Farmer';
+try{
+  const fu = sessionStorage.getItem('fa_user');
+  if(fu){ const obj = JSON.parse(fu); if(obj.username) userName = obj.username; else if(obj.name) userName = obj.name; }
+}catch(e){}
+if(userName === 'Farmer'){
+  const fn = sessionStorage.getItem('farmer_name'); if(fn) userName = fn;
+}
+document.getElementById('userNameDisplay').innerText = userName;
+document.getElementById('user').style.display = 'block';
+
+function logout(){
+  sessionStorage.clear();
+  window.location = 'index.html';
+}
 
 function show(id){
   document.getElementById('home').style.display = 'none';
-  ['soil','weather','disease'].forEach(x=> document.getElementById(x).style.display='none');
+  ['soil','weather','disease','history'].forEach(x=> document.getElementById(x).style.display='none');
   document.getElementById(id).style.display = 'block';
 }
 
 function back(){
   document.getElementById('home').style.display = 'block';
-  ['soil','weather','disease'].forEach(x=> document.getElementById(x).style.display='none');
+  ['soil','weather','disease','history'].forEach(x=> document.getElementById(x).style.display='none');
 }
 
 // Soil analyze
@@ -117,7 +150,14 @@ async function analyzeSoil(){
     ph: document.getElementById('ph').value
   };
   const out = document.getElementById('soilResult');
-  out.innerText = 'Analyzing...';
+  out.innerHTML = '<div class="status-loading">Analyzing...</div>';
+  // Validate numeric inputs: if all numeric fields are zero or empty, show invalid
+  const nums = ['nitrogen','phosphorus','potassium','sulfur','organic_matter','ph'].map(id=>parseFloat(document.getElementById(id).value) || 0);
+  const allZero = nums.every(v=> v === 0);
+  if(allZero){
+    out.innerHTML = '<div class="result-error">Invalid input: all measured values are zero. Please enter real measurements.</div>';
+    return;
+  }
   try {
     const res = await fetch('/api/soil', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     const data = await res.json();
@@ -130,12 +170,158 @@ async function analyzeSoil(){
 function renderSoil(data){
   const out = document.getElementById('soilResult');
   if (data.error){ out.innerText = data.error; return; }
-  let html = `<strong>Crop:</strong> ${data.crop} <br><strong>Soil type:</strong> ${data.soil_type}<hr>`;
+  // Enhanced industrial-style results UI
+  const status = data.overall_status || 'Normal';
+  let html = `<div class="result-header"><div><strong>Crop:</strong> ${data.crop || '-'}<br><strong>Soil type:</strong> ${data.soil_type || '-'}</div><div class="status-badge ${status.toLowerCase()}">${status}</div></div>`;
+  html += '<div class="result-grid">';
   for (const k of ['nitrogen','phosphorus','potassium','sulfur','organic_matter','ph']){
-    const a = data.analysis[k];
-    html += `<div><strong>${k.toUpperCase()}:</strong> ${a.value} — <em>${a.status}</em><br>${a.suggestion}</div><hr>`;
+    const a = data.analysis[k] || {value:'-', status:'-', suggestion:''};
+    const val = a.value === undefined ? '-' : a.value;
+    const stat = (a.status || '').toLowerCase();
+    const colorClass = stat === 'low' ? 'warn' : (stat === 'high' ? 'danger' : 'good');
+    html += `<div class="metric-card">
+      <div class="metric-title">${k.toUpperCase()}</div>
+      <div class="metric-value">${val}</div>
+      <div class="metric-status ${colorClass}">${a.status || '-'}</div>
+      <div class="metric-suggestion">${a.suggestion || ''}</div>
+    </div>`;
+  }
+  html += '</div>';
+  if(data.recommendations && data.recommendations.length){
+    html += '<div class="rec-block"><strong>Recommendations</strong><ul>' + data.recommendations.map(r=>`<li>${r}</li>`).join('') + '</ul></div>';
+  } else {
+    // fallback suggestion aggregation
+    const suggs = [];
+    for (const k of Object.keys(data.analysis||{})){ if(data.analysis[k].suggestion) suggs.push(data.analysis[k].suggestion); }
+    if(suggs.length) html += '<div class="rec-block"><strong>Recommendations</strong><ul>'+suggs.map(s=>`<li>${s}</li>`).join('')+'</ul></div>';
   }
   out.innerHTML = html;
+  out.classList.remove('fade-in'); void out.offsetWidth; out.classList.add('fade-in');
+  // Save to history
+  saveToHistory('soil', data);
+}
+
+// Local AI-style cure generator (heuristic / safe suggestions)
+function generateCure(diseaseName, crop, diseaseObj){
+  const name = (diseaseName||'').toLowerCase();
+  const cropKey = (crop||'').toLowerCase();
+  const steps = [];
+  // Basic crop-specific templates
+  const templates = {
+    tomato: {
+      nutrient: [
+        'For tomatoes, consider sidedressing with compost or well-rotted manure at 2–3 weeks after transplanting.',
+        'For phosphorus deficiency, use rock phosphate; for potassium use wood ash or muriate of potash carefully as per label.'
+      ],
+      fungal: [
+        'Remove infected foliage and improve air flow; apply copper-based fungicide or mancozeb as per label for tomatoes.'
+      ]
+    },
+    rice: {
+      nutrient: ['Apply balanced NPK fertiliser following local recommendations and split N doses for rice.'],
+      fungal: ['Ensure good water management; use recommended fungicides by extension for paddy diseases.']
+    },
+    potato: {
+      nutrient: ['Avoid over nitrogen; apply balanced fertilizers and ensure hilling for tuber development.'],
+      fungal: ['Remove infected tubers and practice crop rotation; use fungicides recommended for potato blight.']
+    }
+  };
+
+  // seed crop-specific tips if available
+  if(cropKey && templates[cropKey]){
+    if(name.includes('nutrient') || name.includes('deficiency')) steps.push(...templates[cropKey].nutrient || []);
+    if(name.includes('fung')||name.includes('blight')||name.includes('mildew')||name.includes('rust')) steps.push(...templates[cropKey].fungal || []);
+  }
+
+  // General safe guidance rules
+  if(name.includes('nutrient') || name.includes('deficiency')){
+    steps.push('Confirm diagnosis with a soil test or tissue test to identify which nutrient is low.');
+    steps.push('Apply balanced organic fertilizer or specific nutrient source as per test results (e.g., compost, well-rotted manure).');
+    steps.push('Use foliar micronutrient sprays as a short-term corrective if recommended.');
+    steps.push('Improve soil organic matter and maintain correct pH for the crop.');
+  } else if(name.includes('herbicid') || name.includes('herbicide')){
+    steps.push('Remove affected plants/parts; avoid harvesting produce from contaminated areas until safe.');
+    steps.push('If herbicide drift is suspected, flush soil surface with light irrigation and wait for labelled interval before replanting.');
+    steps.push('Rotate crops and avoid use of the suspected product again in the same season.');
+  } else if(name.includes('water') || name.includes('watering')){
+    steps.push('Check irrigation schedule; reduce overwatering and ensure even distribution.');
+    steps.push('Improve drainage and soil structure (organic matter, raised beds).');
+    steps.push('If underwatering, provide deep, infrequent irrigation to encourage root growth.');
+  } else if(name.includes('insect') || name.includes('feeding') || name.includes('pest')){
+    steps.push('Identify the insect (trap or photograph) and monitor severity before treating.');
+    steps.push('Encourage beneficial insects and use targeted, low-toxicity controls (neem oil, insecticidal soap) when needed.');
+    steps.push('Remove heavily infested tissue and maintain good field hygiene.');
+  } else if(name.includes('fung') || name.includes('blight') || name.includes('rust') || name.includes('mildew')){
+    steps.push('Remove and destroy infected leaves; avoid overhead irrigation to reduce leaf wetness.');
+    steps.push('Apply recommended fungicides if disease pressure is high, following label instructions and safety guidance.');
+    steps.push('Improve air circulation and sunlight by pruning and correct spacing.');
+    steps.push('Rotate crops and avoid planting susceptible crops in the same location repeatedly.');
+  } else {
+    // fallback generic advice
+    steps.push('Collect a clear photo and compare with trusted extension or plant clinic resources to confirm diagnosis.');
+    steps.push('Improve general plant health: proper watering, balanced nutrition and good field hygiene.');
+    steps.push('Consult local agricultural extension service for precise chemical or cultural controls for your region and crop.');
+  }
+
+  // If diseaseObj has specific suggestions, add them
+  if(diseaseObj && diseaseObj.suggestions){
+    if(Array.isArray(diseaseObj.suggestions)) diseaseObj.suggestions.forEach(s=> steps.push(s));
+    else if(typeof diseaseObj.suggestions === 'string') steps.push(diseaseObj.suggestions);
+  }
+
+  // Crop-specific small tip (summary header)
+  if(crop) steps.unshift(`Crop: ${crop}`);
+  return steps;
+}
+
+function showCure(idx, diseaseName){
+  const el = document.getElementById('cure-'+idx);
+  if(!el) return;
+  if(el.style.display === 'block'){ el.style.display='none'; return; }
+  // try to get crop name from form
+  const crop = (document.getElementById('crop') && document.getElementById('crop').value) || '';
+  const steps = generateCure(diseaseName, crop);
+  let html = '<div class="cure-title">How to cure</div><ol class="cure-list">';
+  steps.forEach(s=> html += `<li>${s}</li>`);
+  html += '</ol>';
+  html += '<div class="cure-note">Note: these are general suggestions. For chemical controls and dosages, consult local guidelines or an agricultural extension expert.</div>';
+  el.innerHTML = html; el.style.display = 'block';
+}
+
+// Open a full-page cure view (hides disease view and shows cure content)
+function openCurePage(idx, diseaseName, diseaseObj){
+  // hide other sections, show cure view
+  document.getElementById('home').style.display = 'none';
+  document.getElementById('soil').style.display = 'none';
+  document.getElementById('weather').style.display = 'none';
+  document.getElementById('disease').style.display = 'none';
+  let cv = document.getElementById('cureView');
+  if(!cv){
+    // create cureView container
+    cv = document.createElement('div'); cv.id = 'cureView'; cv.className = '';
+    cv.style.display = 'none';
+    document.getElementById('app').appendChild(cv);
+  }
+  const crop = (document.getElementById('crop') && document.getElementById('crop').value) || '';
+  // build page
+  const prob = diseaseObj && diseaseObj.probability ? (Math.min(100, Math.max(0, diseaseObj.probability*100))).toFixed(1) + '%' : '';
+  let html = `<button class="btn btn-ghost" onclick="closeCureView()">← Back</button><h3>How to cure: ${diseaseName}</h3>`;
+  html += `<div class="small muted">Crop: <strong>${crop || '-'}</strong> ${prob?('&nbsp;&nbsp;•&nbsp;&nbsp;Probability: <strong>'+prob+'</strong>'):''}</div>`;
+  html += '<div style="margin-top:12px">';
+  const steps = generateCure(diseaseName, crop, diseaseObj);
+  html += '<ol class="cure-list">'; steps.forEach(s=> html += `<li>${s}</li>`); html += '</ol>';
+  html += '<div class="cure-note">Note: these are general suggestions. For chemical controls and dosages, consult local guidelines or an agricultural extension expert.</div>';
+  html += '</div>';
+  cv.innerHTML = html; cv.style.display = 'block';
+  // scroll to top of app
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function closeCureView(){
+  const cv = document.getElementById('cureView'); if(cv) cv.style.display='none';
+  // show disease view again
+  document.getElementById('disease').style.display = 'block';
+  document.getElementById('home').style.display = 'none';
 }
 
 // Weather
@@ -154,34 +340,136 @@ function renderWeather(data){
   const out = document.getElementById('weatherResult');
   if (data.error) { out.innerText = JSON.stringify(data); return; }
   const list = data.list || [];
-  let html = `<strong>Location:</strong> ${data.city?.name || ''}, ${data.city?.country || ''}<hr>`;
+  const cityName = data.city?.name || data.name || '';
+  const country = data.city?.country || data.sys?.country || '';
+
+  // group by day (format: DD/MM/YYYY)
+  const toUSDate = (dt) => {
+    const d = new Date(dt*1000);
+    const day = String(d.getDate()).padStart(2,'0');
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const y = d.getFullYear();
+    return `${day}/${m}/${y}`;
+  };
   const days = {};
   list.forEach(item=>{
-    const d = new Date(item.dt*1000).toLocaleDateString();
+    const d = toUSDate(item.dt);
     days[d] = days[d] || [];
     days[d].push(item);
   });
-  let count = 0;
-  for (const day of Object.keys(days)){
-    if (count>=5) break;
-    const arr = days[day];
-    const mid = arr[Math.floor(arr.length/2)];
-    html += `<div><strong>${day}:</strong> ${mid.weather[0].main}, ${mid.main.temp}°C, Hum ${mid.main.humidity}%</div>`;
-    count++;
+
+  // Today's hero (centered)
+  const todayKey = toUSDate(Date.now()/1000);
+  const todayArr = days[todayKey] || list.slice(0,8);
+  const todayMid = todayArr[Math.floor(todayArr.length/2)] || list[0] || {};
+  const todayWeather = (todayMid.weather && todayMid.weather[0] && todayMid.weather[0].main) || '';
+  const tempNow = (todayMid.main && todayMid.main.temp) || '-';
+  const humNow = (todayMid.main && todayMid.main.humidity) || '-';
+
+  function weatherEmoji(main){
+    if(!main) return '❔';
+    const m = main.toLowerCase();
+    if(m.includes('cloud')) return '☁️';
+    if(m.includes('rain')) return '🌧️';
+    if(m.includes('drizzle')) return '🌦️';
+    if(m.includes('thunder')) return '⛈️';
+    if(m.includes('snow')) return '❄️';
+    if(m.includes('clear')) return '☀️';
+    if(m.includes('mist')||m.includes('fog')||m.includes('haze')) return '🌫️';
+    return '🌤️';
   }
+
+  let html = `<div class="result-header"><div><strong>Location:</strong> ${cityName}${country?(', '+country):''}</div></div>`;
+
+  // Hero
+  html += `<div class="weather-hero">
+    <div class="weather-hero-left">
+      <div class="weather-emoji">${weatherEmoji(todayWeather)}</div>
+      <div class="weather-now">${tempNow}°C</div>
+      <div class="weather-sub">${todayWeather} • Humidity ${humNow}%</div>
+    </div>
+    <div class="weather-hero-right">
+      <div class="weather-date">Today</div>
+      <div class="weather-tip">${data.alert || ''}</div>
+    </div>
+  </div>`;
+
+  // 4-day forecast cards (exclude today)
+  html += '<div class="day-row">';
+  const keys = Object.keys(days).filter(k=>k !== todayKey);
+  let added = 0;
+  for(const d of keys){
+    if(added >= 4) break;
+    const arr = days[d];
+    const mid = arr[Math.floor(arr.length/2)];
+    const icon = (mid.weather && mid.weather[0] && mid.weather[0].main) || '';
+    const tmp = (mid.main && mid.main.temp) || '-';
+    const hum = (mid.main && mid.main.humidity) || '-';
+    html += `<div class="day-card"><div class="day-title">${d}</div><div class="day-icon">${weatherEmoji(icon)}</div><div class="day-temp">${tmp}°C</div><div class="day-hum">Humidity ${hum}%</div></div>`;
+    added++;
+  }
+  // if not enough future days, fill from next items
+  if(added < 4){
+    for(let i=0;i<list.length && added<4;i+=8){
+      const item = list[i];
+      const d = toUSDate(item.dt);
+      if(d === todayKey) continue;
+      const icon = (item.weather && item.weather[0] && item.weather[0].main) || '';
+      const tmp = (item.main && item.main.temp) || '-';
+      const hum = (item.main && item.main.humidity) || '-';
+      html += `<div class="day-card"><div class="day-title">${d}</div><div class="day-icon">${weatherEmoji(icon)}</div><div class="day-temp">${tmp}°C</div><div class="day-hum">Humidity ${hum}%</div></div>`;
+      added++;
+    }
+  }
+  html += '</div>';
+
   out.innerHTML = html;
+  out.classList.remove('fade-in'); void out.offsetWidth; out.classList.add('fade-in');
+  // Save to history
+  saveToHistory('weather', data);
 }
 
 // Geolocation
 function useLocation(){
   if (!navigator.geolocation) return alert('Geolocation not supported');
-  const out = document.getElementById('weatherResult'); out.innerText = 'Getting location...';
+  const out = document.getElementById('weatherResult'); out.innerHTML = '<div class="status-loading">Getting location...</div>';
+  const opts = { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 };
   navigator.geolocation.getCurrentPosition(async pos=>{
-    const lat = pos.coords.latitude, lon = pos.coords.longitude;
-    const res = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
-    const data = await res.json();
-    renderWeather(data);
-  }, err=>{ alert('Location failed: '+err.message); });
+    try{
+      const lat = pos.coords.latitude, lon = pos.coords.longitude;
+      // show coords briefly and try reverse geocoding to get nearby place name
+      const out = document.getElementById('weatherResult');
+      out.innerHTML = `<div class="status-loading">Using coordinates: ${lat.toFixed(4)}, ${lon.toFixed(4)} — fetching nearby place...</div>`;
+      try{
+        const nr = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+        if(nr.ok){
+          const nj = await nr.json();
+          const place = nj.address && (nj.address.town || nj.address.village || nj.address.county || nj.display_name) || '';
+          if(place) out.innerHTML = `<div class="status-loading">Using location near: <strong>${place}</strong> (${lat.toFixed(4)}, ${lon.toFixed(4)})</div>`;
+        }
+      }catch(e){ /* ignore reverse geocode errors */ }
+      const res = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+      const data = await res.json();
+      renderWeather(data);
+    }catch(err){
+      out.innerText = 'Location lookup failed: '+err.message;
+    }
+  }, async err=>{
+    // fallback: try IP-based lookup
+    try{
+      const r = await fetch('https://ipapi.co/json/');
+      const j = await r.json();
+      if(j && j.latitude && j.longitude){
+        const res2 = await fetch(`/api/weather?lat=${j.latitude}&lon=${j.longitude}`);
+        const data2 = await res2.json();
+        renderWeather(data2);
+      } else {
+        alert('Location failed: '+err.message);
+      }
+    }catch(e){
+      alert('Location failed and IP fallback failed: '+err.message);
+    }
+  }, opts);
 }
 
 // Disease upload
@@ -208,13 +496,209 @@ function renderDisease(data){
     return;
   }
   const diseases = data.result.disease.suggestions;
-  let html = '<strong>Disease Detection Results:</strong><hr>';
+  let html = '<div class="result-header"><div><strong>Disease Detection</strong></div></div>';
+  html += '<div class="result-grid">';
   diseases.forEach((disease, idx) => {
-    const percent = (disease.probability * 100).toFixed(2);
-    html += `<div><strong>${idx + 1}. ${disease.name}</strong><br>Probability: ${percent}%</div><hr>`;
+    const percent = Math.min(100, Math.max(0, (disease.probability * 100))).toFixed(1);
+    const safeName = encodeURIComponent(disease.name || '');
+    const safeJSON = encodeURIComponent(JSON.stringify(disease || {}));
+    html += `<div class="disease-card"><div class="disease-top"><div class="disease-name">${disease.name}</div><div class="disease-prob">${percent}%</div></div><div class="prob-bar"><div class="prob-fill" style="width:${percent}%"></div></div><div class="disease-suggest">${disease.suggestions || ''}</div><div class="disease-card-button"><button class="btn btn-ghost cure-btn" data-idx="${idx}" data-name="${safeName}" data-d="${safeJSON}">🩺 How to cure</button></div></div>`;
   });
+  html += '</div>';
   out.innerHTML = html;
+  // attach click handlers for cure buttons (use dataset to avoid inline JS quoting issues)
+  setTimeout(()=>{
+    document.querySelectorAll('.cure-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const idx = btn.dataset.idx;
+        const name = decodeURIComponent(btn.dataset.name || '');
+        const djson = btn.dataset.d ? JSON.parse(decodeURIComponent(btn.dataset.d)) : null;
+        openCurePage(idx, name, djson);
+      });
+    });
+  },0);
+  out.classList.remove('fade-in'); void out.offsetWidth; out.classList.add('fade-in');
+  // Save to history
+  saveToHistory('disease', data);
 }
+
+// History functions - per-user storage
+function getUserHistoryKey(type){
+  return `fa_history_${userName}_${type}`;
+}
+
+function saveToHistory(type, data){
+  if(!type || !data) return;
+  try{
+    const key = getUserHistoryKey(type);
+    let history = [];
+    const stored = localStorage.getItem(key);
+    if(stored){
+      try { history = JSON.parse(stored); } catch(e){}
+    }
+    const entry = {
+      timestamp: new Date().toISOString(),
+      data: data
+    };
+    history.push(entry);
+    localStorage.setItem(key, JSON.stringify(history));
+  }catch(e){
+    console.error('Failed to save history:', e);
+  }
+}
+
+function showHistoryTab(type){
+  if(!type) return;
+  // Update active tab
+  document.querySelectorAll('.history-tab-btn').forEach(btn=>btn.classList.remove('active'));
+  event.target.classList.add('active');
+  
+  // Load and display history - per-user
+  const key = getUserHistoryKey(type);
+  let history = [];
+  const stored = localStorage.getItem(key);
+  if(stored){
+    try { history = JSON.parse(stored); } catch(e){}
+  }
+  
+  const content = document.getElementById('historyContent');
+  if(!history || history.length === 0){
+    content.innerHTML = '<div class="status-loading">No history yet for ' + type + ' analysis</div>';
+    return;
+  }
+  
+  let html = '<div class="history-list">';
+  history.reverse().forEach((entry, idx)=>{
+    const ts = new Date(entry.timestamp);
+    const dateStr = String(ts.getDate()).padStart(2,'0') + '/' + String(ts.getMonth()+1).padStart(2,'0') + '/' + ts.getFullYear() + ' ' + ts.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+    const data = entry.data || {};
+    
+    let summary = '';
+    if(type === 'soil'){
+      summary = `${data.crop || 'Unknown crop'} - ${data.soil_type || 'Unknown soil'} (${data.overall_status || 'N/A'})`;
+    } else if(type === 'weather'){
+      summary = `${data.city?.name || data.name || 'Unknown location'}`;
+    } else if(type === 'disease'){
+      if(data.result && data.result.disease && data.result.disease.suggestions){
+        const diseases = data.result.disease.suggestions.slice(0,2);
+        summary = diseases.map(d=>`${d.name} (${(d.probability*100).toFixed(0)}%)`).join(', ');
+      }
+    }
+    
+    const itemId = `history-item-${idx}`;
+    const detailId = `history-detail-${idx}`;
+    html += `<div class="history-item" onclick="toggleHistoryDetail('${detailId}')">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="history-date">${dateStr}</div>
+          <div class="history-summary">${summary}</div>
+        </div>
+        <div class="history-expand">▼</div>
+      </div>
+      <div id="${detailId}" class="history-detail" style="display:none">
+        ${renderHistoryDetail(type, data)}
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  content.innerHTML = html;
+}
+
+function toggleHistoryDetail(detailId){
+  const el = document.getElementById(detailId);
+  if(el){
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+function renderHistoryDetail(type, data){
+  if(type === 'soil'){
+    // Show full soil analysis
+    let html = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e6eef0">';
+    html += '<div class="result-grid">';
+    for (const k of ['nitrogen','phosphorus','potassium','sulfur','organic_matter','ph']){
+      const a = data.analysis[k] || {value:'-', status:'-', suggestion:''};
+      const val = a.value === undefined ? '-' : a.value;
+      const stat = (a.status || '').toLowerCase();
+      const colorClass = stat === 'low' ? 'warn' : (stat === 'high' ? 'danger' : 'good');
+      html += `<div class="metric-card">
+        <div class="metric-title">${k.toUpperCase()}</div>
+        <div class="metric-value">${val}</div>
+        <div class="metric-status ${colorClass}">${a.status || '-'}</div>
+        <div class="metric-suggestion">${a.suggestion || ''}</div>
+      </div>`;
+    }
+    html += '</div>';
+    if(data.recommendations && data.recommendations.length){
+      html += '<div class="rec-block"><strong>Recommendations</strong><ul>' + data.recommendations.map(r=>`<li>${r}</li>`).join('') + '</ul></div>';
+    }
+    html += '</div>';
+    return html;
+  } else if(type === 'weather'){
+    // Show weather cards for that day
+    const list = data.list || [];
+    let html = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e6eef0">';
+    
+    if(list && list.length > 0){
+      html += '<div class="day-row">';
+      for(let i = 0; i < Math.min(8, list.length); i += 2){
+        const item = list[i];
+        const icon = (item.weather && item.weather[0] && item.weather[0].main) || '';
+        const tmp = (item.main && item.main.temp) || '-';
+        const hum = (item.main && item.main.humidity) || '-';
+        const wind = (item.wind && item.wind.speed) || '-';
+        const time = new Date(item.dt*1000).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+        
+        function weatherEmoji(main){
+          if(!main) return '❔';
+          const m = main.toLowerCase();
+          if(m.includes('cloud')) return '☁️';
+          if(m.includes('rain')) return '🌧️';
+          if(m.includes('drizzle')) return '🌦️';
+          if(m.includes('thunder')) return '⛈️';
+          if(m.includes('snow')) return '❄️';
+          if(m.includes('clear')) return '☀️';
+          if(m.includes('mist')||m.includes('fog')||m.includes('haze')) return '🌫️';
+          return '🌤️';
+        }
+        
+        html += `<div class="day-card">
+          <div class="day-title">${time}</div>
+          <div class="day-icon">${weatherEmoji(icon)}</div>
+          <div class="day-temp">${tmp}°C</div>
+          <div class="day-hum">Humidity ${hum}%</div>
+          <div class="day-wind">Wind ${wind} m/s</div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  } else if(type === 'disease'){
+    // Show disease details
+    let html = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e6eef0">';
+    if(data.result && data.result.disease && data.result.disease.suggestions){
+      const diseases = data.result.disease.suggestions;
+      html += '<div class="result-grid">';
+      diseases.forEach((disease, idx) => {
+        const percent = Math.min(100, Math.max(0, (disease.probability * 100))).toFixed(1);
+        html += `<div class="disease-card">
+          <div class="disease-top">
+            <div class="disease-name">${disease.name}</div>
+            <div class="disease-prob">${percent}%</div>
+          </div>
+          <div class="prob-bar"><div class="prob-fill" style="width:${percent}%"></div></div>
+          <div class="disease-suggest">${disease.suggestions || ''}</div>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+  return '';
+}
+
 </script>
 </body>
 </html>
