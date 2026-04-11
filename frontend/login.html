@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AgroMind | Login</title>
+  <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+  <link rel="stylesheet" href="styles.css?v=3">
+</head>
+
+<body class="auth-container">
+  <div class="auth-form fade-in">
+    <div class="h1" style="text-align:center;margin-bottom:8px">AgroMind</div>
+    <div class="small" style="text-align:center;margin-bottom:32px">Smart agricultural intelligence for everyone.</div>
+
+    <h3 style="margin-bottom:24px">Welcome back</h3>
+
+    <div style="margin-bottom:20px">
+      <label class="label">Username or Email</label>
+      <input id="username" class="input" type="text" placeholder="Enter your username or email" style="margin-bottom:0">
+    </div>
+
+    <div style="margin-bottom:12px">
+      <label class="label">Password</label>
+      <input id="password" class="input" type="password" placeholder="••••••••" style="margin-bottom:0">
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
+      <input id="showPwd" type="checkbox" style="width:16px;height:16px;accent-color:var(--primary)">
+      <label for="showPwd" class="small" style="cursor:pointer">Show password</label>
+    </div>
+
+    <div id="loginError" style="display:none;margin-bottom:20px" class="result-error"></div>
+
+    <button id="loginBtn" class="btn" style="width:100%">Sign In</button>
+
+    <div style="margin-top:24px;text-align:center;display:flex;flex-direction:column;gap:12px">
+      <span class="small">Don't have an account? <a href="signup.html"
+          style="color:var(--primary);font-weight:700;text-decoration:none">Create Account</a></span>
+      <a href="index.html" class="small" style="text-decoration:none">← Back to home</a>
+    </div>
+  </div>
+
+  <script src="utils.js"></script>
+  <script>
+    document.getElementById('showPwd').addEventListener('change', e => {
+      document.getElementById('password').type = e.target.checked ? 'text' : 'password';
+    });
+
+    function showError(msg) {
+      const el = document.getElementById('loginError');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      const u = document.getElementById('username').value.trim();
+      const p = document.getElementById('password').value;
+
+      if (!u || !p) { showError('Check your credentials and try again.'); return; }
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+
+        localStorage.setItem('fa_user', JSON.stringify(data.user));
+        window.location = 'dashboard.html';
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('loginBtn').click();
+    });
+  </script>
+</body>
+
+</html>

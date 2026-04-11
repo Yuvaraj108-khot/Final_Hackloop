@@ -1,0 +1,11 @@
+{
+  "name": "final-hackloop",
+  "version": "1.0.0",
+  "description": "Root package for Final Hackloop",
+  "scripts": {
+    "start": "npm start --prefix backend"
+  },
+  "dependencies": {
+    "htmx.org": "^2.0.8"
+  }
+}

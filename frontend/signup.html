@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AgroMind | Create Account</title>
+  <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+  <link rel="stylesheet" href="styles.css?v=3">
+</head>
+<body class="auth-container">
+  <div class="auth-form fade-in">
+    <a href="index.html" class="brand" style="justify-content: center;">
+      <img src="images/logo.png" alt="AgroMind Logo">
+      <span class="brand-text">AgroMind</span>
+    </a>
+    <div class="small" style="text-align:center;margin-bottom:32px">Begin your journey to smarter farming today.</div>
+
+    <h3 style="margin-bottom:24px">Create your account</h3>
+
+    <div style="margin-bottom:20px">
+      <label class="label">Choose Username</label>
+      <input id="username" class="input" type="text" placeholder="Pick a unique username" style="margin-bottom:0">
+    </div>
+
+    <div style="margin-bottom:20px">
+      <label class="label">Email Address</label>
+      <input id="email" class="input" type="email" placeholder="farmer@example.com" style="margin-bottom:0">
+    </div>
+
+    <div style="margin-bottom:24px">
+      <label class="label">Create Password</label>
+      <input id="password" class="input" type="password" placeholder="At least 6 characters" style="margin-bottom:0">
+    </div>
+
+    <div id="signupError" style="display:none;margin-bottom:20px" class="result-error"></div>
+
+    <button id="signupBtn" class="btn" style="width:100%">Create Account</button>
+
+    <div style="margin-top:24px;text-align:center;display:flex;flex-direction:column;gap:12px">
+      <span class="small">Already have an account? <a href="login.html" style="color:var(--primary);font-weight:700;text-decoration:none">Sign In</a></span>
+      <a href="index.html" class="small" style="text-decoration:none">← Back to home</a>
+    </div>
+  </div>
+
+  <script src="utils.js"></script>
+  <script>
+    function showError(msg) {
+      const el = document.getElementById('signupError');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    document.getElementById('signupBtn').addEventListener('click', async () => {
+      const u = document.getElementById('username').value.trim();
+      const e = document.getElementById('email').value.trim();
+      const p = document.getElementById('password').value;
+
+      if (!u || !e || !p) { showError('All fields are required.'); return; }
+      if (p.length < 6) { showError('Password must be at least 6 characters.'); return; }
+
+      try {
+        const res = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p, email: e })
+        });
+        const data = await res.json();
+        
+        if (!res.ok) throw new Error(data.error || 'Signup failed');
+
+        localStorage.setItem('fa_user', JSON.stringify(data.user));
+        window.location = 'dashboard.html';
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+  </script>
+</body>
+</html>
