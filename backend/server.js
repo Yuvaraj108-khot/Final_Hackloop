@@ -418,6 +418,7 @@ app.post('/api/disease', upload.single('image'), async (req, res) => {
     const dataUrl = `data:${mime};base64,${base64}`;
 
     const cropHint = req.body.crop_hint || 'unknown';
+    const normalizedCropHint = (req.body.crop_hint || '').trim();
 
     const prompt = `You are an expert plant pathologist AI. Carefully analyze this plant/leaf image.
 ${cropHint !== 'unknown' ? `CONTEXT: The user identifies this plant as "${cropHint}". Use this as a reference while diagnosing.` : ''}
@@ -482,6 +483,15 @@ If no products needed, set products to []. Use reputable products available in g
     }
 
     const result = JSON.parse(aiData.choices[0].message.content);
+
+    // Crop name label policy:
+    // - If user supplied crop name, always use it.
+    // - If user did NOT supply crop name, do not auto-show model inferred crop label.
+    if (normalizedCropHint) {
+      result.plant_name = normalizedCropHint;
+    } else {
+      result.plant_name = null;
+    }
 
     if (!result.is_plant) {
       return res.json({
