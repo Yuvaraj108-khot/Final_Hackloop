@@ -17,12 +17,15 @@
     <h3 style="margin-bottom:24px">Welcome back</h3>
 
     <div style="margin-bottom:20px">
-      <label class="label">Username or Email</label>
-      <input id="username" class="input" type="text" placeholder="Enter your username or email" style="margin-bottom:0">
+      <label class="label">Email Address</label>
+      <input id="email" class="input" type="email" placeholder="Enter your email" style="margin-bottom:0">
     </div>
 
     <div style="margin-bottom:12px">
-      <label class="label">Password</label>
+      <div style="display:flex; justify-content:space-between; align-items:center">
+        <label class="label">Password</label>
+        <a href="forgot-password.html" class="small" style="color:var(--primary);text-decoration:none;margin-bottom:8px">Forgot password?</a>
+      </div>
       <input id="password" class="input" type="password" placeholder="••••••••" style="margin-bottom:0">
     </div>
 
@@ -55,16 +58,16 @@
     }
 
     document.getElementById('loginBtn').addEventListener('click', async () => {
-      const u = document.getElementById('username').value.trim();
+      const e = document.getElementById('email').value.trim();
       const p = document.getElementById('password').value;
 
-      if (!u || !p) { showError('Check your credentials and try again.'); return; }
+      if (!e || !p) { showError('Check your email and password.'); return; }
 
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: u, password: p })
+          body: JSON.stringify({ email: e, password: p })
         });
         const data = await res.json();
 

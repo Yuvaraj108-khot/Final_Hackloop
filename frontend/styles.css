@@ -260,6 +260,15 @@ body {
   margin-top: 12px;
 }
 
+.result-success {
+  padding: 16px;
+  background: #f0fdf4;
+  color: #166534;
+  border-radius: 12px;
+  font-weight: 500;
+  margin-top: 12px;
+}
+
 .grid-4 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

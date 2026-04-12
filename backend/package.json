@@ -4,9 +4,9 @@
   "description": "Farmer-friendly site for soil, weather, and disease detection",
   "main": "server.js",
   "scripts": {
-  "start": "node server.js",
-  "postinstall": "npm rebuild sqlite3 --build-from-source"
-},
+    "start": "node server.js",
+    "postinstall": "npm rebuild sqlite3 --build-from-source"
+  },
   "dependencies": {
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
@@ -14,6 +14,7 @@
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^2.7.0",
+    "nodemailer": "^8.0.5",
     "sqlite3": "^6.0.1"
   }
 }

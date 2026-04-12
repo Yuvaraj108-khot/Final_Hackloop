@@ -6,6 +6,7 @@ const path = require('path');
 const fetch = require('node-fetch');
 const multer = require('multer');
 const sqlite3 = require('sqlite3').verbose();
+const nodemailer = require('nodemailer');
 
 const app = express();
 
@@ -40,10 +41,25 @@ const db = new sqlite3.Database(dbPath, (err) => {
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
+    username TEXT,
     email TEXT UNIQUE,
-    password TEXT
+    password TEXT,
+    reset_token TEXT,
+    reset_token_expiry INTEGER
   )`);
+  
+  // Migration for existing databases
+  db.run(`ALTER TABLE users ADD COLUMN reset_token TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      // Ignore if column exists
+    }
+  });
+  db.run(`ALTER TABLE users ADD COLUMN reset_token_expiry INTEGER`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      // Ignore if column exists
+    }
+  });
+
   db.run(`CREATE TABLE IF NOT EXISTS history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -81,6 +97,12 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function maskKey(key) {
+  if (!key) return 'missing';
+  if (key.length <= 6) return 'configured';
+  return `${key.slice(0, 3)}***${key.slice(-3)}`;
+}
+
 // ===========================
 //       ENV VARIABLES
 // ===========================
@@ -89,11 +111,19 @@ const WEATHER_KEY = process.env.WEATHER_API_KEY || '';
 const DISEASE_KEY = process.env.DISEASE_API_KEY || '';
 const GROQ_KEY = process.env.GROQ_API_KEY || '';
 
-function maskKey(key) {
-  if (!key) return 'missing';
-  if (key.length <= 6) return 'configured';
-  return `${key.slice(0, 3)}***${key.slice(-3)}`;
-}
+// EMAIL SETUP
+const EMAIL_USER = process.env.EMAIL_USER || '';
+const EMAIL_PASS = process.env.EMAIL_PASS || '';
+const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
+const EMAIL_PORT = Number(process.env.EMAIL_PORT || 587);
+const BASE_URL = process.env.BASE_URL || '';
+
+const transporter = nodemailer.createTransport({
+  host: EMAIL_HOST,
+  port: EMAIL_PORT,
+  secure: EMAIL_PORT === 465,
+  auth: { user: EMAIL_USER, pass: EMAIL_PASS }
+});
 
 console.log('Loaded WEATHER KEY:', maskKey(WEATHER_KEY));
 console.log('Loaded DISEASE KEY:', maskKey(DISEASE_KEY));
@@ -129,11 +159,91 @@ app.post('/api/signup', (req, res) => {
 });
 
 app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
-  // Support both username and email login
-  db.get(`SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?`, [username, username, password], (err, row) => {
-    if (err || !row) return res.status(401).json({ error: 'Invalid username/email or password' });
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+  db.get(`SELECT * FROM users WHERE email = ? AND password = ?`, [email, password], (err, row) => {
+    if (err || !row) return res.status(401).json({ error: 'Invalid email or password' });
     res.json({ success: true, user: { id: row.id, username: row.username, email: row.email } });
+  });
+});
+
+// New Password Reset Endpoints
+app.post('/api/forgot-password', (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  db.get(`SELECT id FROM users WHERE email = ?`, [email], (err, row) => {
+    if (err || !row) {
+      // For security, don't reveal if user exists, but here we can be helpful for the demo
+      return res.status(404).json({ error: 'User not found with this email' });
+    }
+    
+    const token = Math.random().toString(36).slice(-8); // Simple random token
+    const expiry = Date.now() + 3600000; // 1 hour
+
+    db.run(`UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?`, [token, expiry, email], async (err) => {
+      if (err) return res.status(500).json({ error: 'Failed to generate reset token' });
+      
+      const host = BASE_URL || `http://${req.headers.host}`;
+      const resetLink = `${host}/reset-password.html?token=${token}&email=${encodeURIComponent(email)}`;
+      
+      // If configured, send real email
+      if (EMAIL_USER && EMAIL_PASS) {
+        try {
+          await transporter.sendMail({
+            from: `"AgroMind Support" <${EMAIL_USER}>`,
+            to: email,
+            subject: "Password Reset Request - AgroMind",
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+                <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
+                <p>Hello,</p>
+                <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
+                </div>
+                <p>If the button doesn't work, copy and paste this link into your browser:</p>
+                <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
+                <p>This link will expire in 1 hour.</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
+              </div>
+            `
+          });
+          return res.json({ success: true, message: 'Reset email sent successfully!' });
+        } catch (mailErr) {
+          console.error('Mail Send Error:', mailErr);
+          // Fallback to demo mode if sending fails but creds were provided
+        }
+      }
+
+      // Fallback: Return the link for the developer/user to see (Demo Mode)
+      res.json({ 
+        success: true, 
+        message: 'Password reset link generated (Demo Mode).',
+        resetLink: `/reset-password.html?token=${token}&email=${encodeURIComponent(email)}`
+      });
+    });
+  });
+});
+
+app.post('/api/reset-password', (req, res) => {
+  const { email, token, newPassword } = req.body;
+  if (!email || !token || !newPassword) return res.status(400).json({ error: 'All fields are required' });
+
+  db.get(`SELECT * FROM users WHERE email = ? AND reset_token = ?`, [email, token], (err, row) => {
+    if (err || !row) return res.status(400).json({ error: 'Invalid or expired token' });
+    
+    if (Date.now() > row.reset_token_expiry) {
+      return res.status(400).json({ error: 'Token has expired' });
+    }
+
+    db.run(`UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?`, [newPassword, row.id], (err) => {
+      if (err) return res.status(500).json({ error: 'Failed to update password' });
+      res.json({ success: true, message: 'Password updated successfully' });
+    });
   });
 });
 
