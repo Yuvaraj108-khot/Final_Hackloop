@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Root package for Final Hackloop",
   "scripts": {
+    "postinstall": "npm install --prefix backend",
     "start": "npm start --prefix backend"
   },
   "dependencies": {
