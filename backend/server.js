@@ -231,36 +231,35 @@ app.post('/api/forgot-password', (req, res) => {
       if (EMAIL_USER && EMAIL_PASS) {
         console.log(`Sending email to: ${email}...`);
         
-        // Send email in the background (do not await) so the user gets an instant response
-        transporter.sendMail({
-          from: `"AgroMind Support" <${EMAIL_USER}>`,
-          to: email,
-          subject: "Password Reset Request - AgroMind",
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-              <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
-              <p>Hello,</p>
-              <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
+        try {
+          await transporter.sendMail({
+            from: `"AgroMind Support" <${EMAIL_USER}>`,
+            to: email,
+            subject: "Password Reset Request - AgroMind",
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+                <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
+                <p>Hello,</p>
+                <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
+                </div>
+                <p>If the button doesn't work, copy and paste this link into your browser:</p>
+                <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
+                <p>This link will expire in 1 hour.</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
               </div>
-              <p>If the button doesn't work, copy and paste this link into your browser:</p>
-              <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
-              <p>This link will expire in 1 hour.</p>
-              <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-              <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
-            </div>
-          `
-        }).then(() => {
-          console.log('✅ Background Email Success:', email);
-        }).catch(mailErr => {
-          console.error(`❌ Background Email Failed:`, mailErr.message);
-        });
-
-        // Respond instantly
-        return res.json({ success: true, message: 'Reset email sent successfully! Please check your inbox (and spam folder).' });
+            `
+          });
+          console.log('✅ Email Success:', email);
+          return res.json({ success: true, message: 'Reset email sent successfully! Please check your inbox.' });
+        } catch (mailErr) {
+          console.error(`❌ Email Failed:`, mailErr.message);
+          return res.status(500).json({ error: 'ERROR: Gmail rejected the email connection.' });
+        }
       } else {
-         return res.status(500).json({ error: 'Email configuration is missing on the server.' });
+         return res.status(500).json({ error: 'ERROR: The server is missing EMAIL_USER or EMAIL_PASS environment variables.' });
       }
     });
   });
