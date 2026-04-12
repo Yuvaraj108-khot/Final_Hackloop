@@ -34,13 +34,13 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.log('Success: Connected to Database.');
     // Verifying table existence and user count
     db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='users';", (err, row) => {
-       if (row) {
-         db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
-           if (!err && row) console.log(`Database Status: OK. User count: ${row.count}`);
-         });
-       } else {
-         console.log('Database Status: NEW (Tables not yet created)');
-       }
+      if (row) {
+        db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
+          if (!err && row) console.log(`Database Status: OK. User count: ${row.count}`);
+        });
+      } else {
+        console.log('Database Status: NEW (Tables not yet created)');
+      }
     });
   }
 });
@@ -54,7 +54,7 @@ db.serialize(() => {
     reset_token TEXT,
     reset_token_expiry INTEGER
   )`);
-  
+
   // Migration for existing databases
   db.run(`ALTER TABLE users ADD COLUMN reset_token TEXT`, (err) => {
     if (err && !err.message.includes('duplicate column name')) {
@@ -133,9 +133,9 @@ const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: EMAIL_PORT,
   secure: EMAIL_PORT === 465,
-  auth: { 
-    user: EMAIL_USER.trim(), 
-    pass: EMAIL_PASS.trim() 
+  auth: {
+    user: EMAIL_USER.trim(),
+    pass: EMAIL_PASS.trim()
   },
   tls: { rejectUnauthorized: false },
   logger: true,
@@ -180,7 +180,7 @@ app.post('/api/signup', (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 6 characters.' });
   }
 
-  db.run(`INSERT INTO users (username, password, email) VALUES (?, ?, ?)`, [username, password, email], function(err) {
+  db.run(`INSERT INTO users (username, password, email) VALUES (?, ?, ?)`, [username, password, email], function (err) {
     if (err) {
       if (err.message.includes('UNIQUE constraint failed')) {
         return res.status(400).json({ error: 'Username or Email already exists' });
@@ -212,7 +212,7 @@ app.post('/api/forgot-password', (req, res) => {
       // For security, don't reveal if user exists, but here we can be helpful for the demo
       return res.status(404).json({ error: 'User not found with this email' });
     }
-    
+
     const token = Math.random().toString(36).slice(-8); // Simple random token
     const expiry = Date.now() + 3600000; // 1 hour
 
@@ -221,16 +221,16 @@ app.post('/api/forgot-password', (req, res) => {
         console.error('DB Update Error:', err);
         return res.status(500).json({ error: 'Failed to generate reset token' });
       }
-      
-      const host = BASE_URL || `http://${req.headers.host}`;
+
+      const host = process.env.BASE_URL || `http://${req.headers.host}`;
       const resetLink = `${host}/reset-password.html?token=${token}&email=${encodeURIComponent(email)}`;
-      
+
       console.log(`Password reset requested for: ${email}`);
-      
+
       // If configured, send real email
       if (EMAIL_USER && EMAIL_PASS) {
         console.log(`Sending email to: ${email}...`);
-        
+
         try {
           await transporter.sendMail({
             from: `"AgroMind Support" <${EMAIL_USER}>`,
@@ -259,7 +259,7 @@ app.post('/api/forgot-password', (req, res) => {
           return res.status(500).json({ error: 'ERROR: Gmail rejected the email connection.' });
         }
       } else {
-         return res.status(500).json({ error: 'ERROR: The server is missing EMAIL_USER or EMAIL_PASS environment variables.' });
+        return res.status(500).json({ error: 'ERROR: The server is missing EMAIL_USER or EMAIL_PASS environment variables.' });
       }
     });
   });
@@ -271,7 +271,7 @@ app.post('/api/reset-password', (req, res) => {
 
   db.get(`SELECT * FROM users WHERE email = ? AND reset_token = ?`, [email, token], (err, row) => {
     if (err || !row) return res.status(400).json({ error: 'Invalid or expired token' });
-    
+
     if (Date.now() > row.reset_token_expiry) {
       return res.status(400).json({ error: 'Token has expired' });
     }
@@ -297,10 +297,10 @@ async function validateSoilInputs(payload) {
 
   // Hard numeric guards first
   const ph_num = parseFloat(ph);
-  const n_num  = parseFloat(nitrogen);
-  const p_num  = parseFloat(phosphorus);
-  const k_num  = parseFloat(potassium);
-  const s_num  = parseFloat(sulfur);
+  const n_num = parseFloat(nitrogen);
+  const p_num = parseFloat(phosphorus);
+  const k_num = parseFloat(potassium);
+  const s_num = parseFloat(sulfur);
   const om_num = parseFloat(organic_matter);
 
   if (ph_num < 0 || ph_num > 14)
@@ -497,7 +497,7 @@ app.get('/api/weather', async (req, res) => {
     const { user_id } = req.query;
     if (user_id) {
       const loc = data.city ? data.city.name : 'Target Location';
-      db.run(`INSERT INTO history (user_id, type, summary, payload) VALUES (?, ?, ?, ?)`, 
+      db.run(`INSERT INTO history (user_id, type, summary, payload) VALUES (?, ?, ?, ?)`,
         [user_id, 'Weather', `Forecast for ${loc}`, JSON.stringify(data)]);
     }
 
@@ -532,7 +532,7 @@ app.post('/api/water', async (req, res) => {
           const wData = await wRes.json();
           weatherDesc = `${wData.list?.[0]?.weather?.[0]?.description}, temp ${wData.list?.[0]?.main?.temp}°C, humidity ${wData.list?.[0]?.main?.humidity}%`;
         }
-      } catch {}
+      } catch { }
     }
 
     const prompt = `
@@ -599,7 +599,7 @@ app.post('/api/disease', upload.single('image'), async (req, res) => {
     if (!GROQ_KEY) return res.status(500).json({ error: 'AI (Groq) not configured in .env' });
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
-    const mime   = req.file.mimetype || 'image/jpeg';
+    const mime = req.file.mimetype || 'image/jpeg';
     const base64 = req.file.buffer.toString('base64');
     const dataUrl = `data:${mime};base64,${base64}`;
 
@@ -764,7 +764,7 @@ If a value is truly missing or unreadable, set it to null.`;
 
     const aiData = await response.json();
     if (!response.ok) throw new Error(aiData.error?.message || 'Report extraction failed');
-    
+
     const result = JSON.parse(aiData.choices[0].message.content);
     res.json(result);
   } catch (err) {
@@ -808,7 +808,7 @@ app.post('/api/ledger', (req, res) => {
   db.run(
     `INSERT INTO ledger (user_id, type, amount, category, description, date) VALUES (?, ?, ?, ?, ?, ?)`,
     [user_id, type, amount, category, description, date || new Date().toISOString()],
-    function(err) {
+    function (err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, id: this.lastID });
     }
@@ -828,16 +828,16 @@ app.delete('/api/ledger/:id', (req, res) => {
 //    MARKET INTELLIGENCE
 // ===========================
 const MANDI_DATA = [
-  { 
-    commodity: 'Wheat', state: 'Punjab', market: 'Khanna', 
+  {
+    commodity: 'Wheat', state: 'Punjab', market: 'Khanna',
     min_price: 2275, max_price: 2500, modal_price: 2400, unit: 'Quintal', trend: 'up',
     buyers: [
       { name: 'Punjab State Coop Supply (Markfed)', contact: '+91 172-2741xxx', type: 'Government' },
       { name: 'Aggarwal Wheat Traders', contact: '+91 98765-43xxx', type: 'Private' }
     ]
   },
-  { 
-    commodity: 'Paddy (Dhan)', state: 'Haryana', market: 'Karnal', 
+  {
+    commodity: 'Paddy (Dhan)', state: 'Haryana', market: 'Karnal',
     min_price: 1950, max_price: 2320, modal_price: 2183, unit: 'Quintal', trend: 'stable',
     buyers: [
       { name: 'Haryana Warehousing Corp', contact: '+91 172-2703xxx', type: 'Government' },
@@ -849,8 +849,8 @@ const MANDI_DATA = [
 app.get('/api/mandi', (req, res) => {
   const { q } = req.query;
   if (!q) return res.json(MANDI_DATA);
-  const filtered = MANDI_DATA.filter(item => 
-    item.commodity.toLowerCase().includes(q.toLowerCase()) || 
+  const filtered = MANDI_DATA.filter(item =>
+    item.commodity.toLowerCase().includes(q.toLowerCase()) ||
     item.state.toLowerCase().includes(q.toLowerCase())
   );
   res.json(filtered);
