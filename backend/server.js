@@ -128,16 +128,16 @@ const BASE_URL = process.env.BASE_URL || '';
 // Determine if we should use secure connection (Port 465)
 const useSecure = EMAIL_PORT === 465;
 
-// Specialized Gmail configuration with POOLING for speed
+// Specialized Gmail configuration with IPv4 forced
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  pool: true, // Keep the connection open for instant subsequent sends
-  maxConnections: 5,
-  maxMessages: 100,
+  host: 'smtp.gmail.com',
+  port: EMAIL_PORT,
+  secure: EMAIL_PORT === 465,
   auth: { 
     user: EMAIL_USER.trim(), 
     pass: EMAIL_PASS.trim() 
   },
+  tls: { rejectUnauthorized: false },
   logger: true,
   debug: true
 });
@@ -229,7 +229,9 @@ app.post('/api/forgot-password', (req, res) => {
       
       // If configured, send real email
       if (EMAIL_USER && EMAIL_PASS) {
-        console.log(`Backgrounding email send to: ${email}...`);
+        console.log(`Sending email to: ${email}...`);
+        
+        // Send email in the background (do not await) so the user gets an instant response
         transporter.sendMail({
           from: `"AgroMind Support" <${EMAIL_USER}>`,
           to: email,
@@ -252,19 +254,14 @@ app.post('/api/forgot-password', (req, res) => {
         }).then(() => {
           console.log('✅ Background Email Success:', email);
         }).catch(mailErr => {
-          console.error('❌ Background Email Error:', mailErr.message);
+          console.error(`❌ Background Email Failed:`, mailErr.message);
         });
 
-        // Respond IMMEDIATELY without waiting for Gmail
-        return res.json({ success: true, message: 'Reset email sent successfully!' });
+        // Respond instantly
+        return res.json({ success: true, message: 'Reset email sent successfully! Please check your inbox (and spam folder).' });
+      } else {
+         return res.status(500).json({ error: 'Email configuration is missing on the server.' });
       }
-
-      console.log('Falling back to Demo Mode for reset link.');
-      res.json({ 
-        success: true, 
-        message: 'Password reset link generated (Demo Mode).',
-        resetLink: `/reset-password.html?token=${token}&email=${encodeURIComponent(email)}`
-      });
     });
   });
 });
