@@ -56,6 +56,13 @@
       const p = document.getElementById('password').value;
 
       if (!u || !e || !p) { showError('All fields are required.'); return; }
+      
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(e)) {
+        showError('Please enter a valid email address.');
+        return;
+      }
+
       if (p.length < 6) { showError('Password must be at least 6 characters.'); return; }
 
       try {

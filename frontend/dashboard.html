@@ -1071,25 +1071,22 @@
 
     async function getHistory() {
       if (!user) return [];
-      const key = getUserScopedKey(HISTORY_KEY);
-      const rows = readLocalArray(key);
-      return rows.sort((a, b) => new Date(b.at) - new Date(a.at));
+      try {
+        const rows = await callAPI(`/api/history?user_id=${user.id}`);
+        return rows || [];
+      } catch (e) {
+        console.error('History fetch error:', e);
+        return [];
+      }
     }
 
     async function addHistory(type, summary, payload) {
-      if (!user) return;
-      const key = getUserScopedKey(HISTORY_KEY);
-      const rows = readLocalArray(key);
-      rows.unshift({
-        id: Date.now(),
-        type,
-        summary,
-        payload: payload || {},
-        at: new Date().toISOString()
-      });
-      writeLocalArray(key, rows.slice(0, 200));
-      await renderHistory();
-      await renderRecent();
+      // Backend automatically adds history for Soil, Weather, Disease
+      // So we just re-render after a delay or trigger it manually
+      setTimeout(() => {
+        renderHistory();
+        renderRecent();
+      }, 500);
     }
 
     function formatTime(iso) {
@@ -1106,7 +1103,7 @@
       }
       root.innerHTML = entries.map(item => `
         <div class="history-item">
-          <span class="history-date">${formatTime(item.at)}</span>
+          <span class="history-date">${formatTime(item.created_at)}</span>
           <span class="history-summary"><strong>${item.type}:</strong> ${item.summary}</span>
         </div>
       `).join('');
@@ -1122,7 +1119,7 @@
       }
       root.innerHTML = entries.map(item => `
         <div class="history-item">
-          <span class="history-date">${formatTime(item.at)}</span>
+          <span class="history-date">${formatTime(item.created_at)}</span>
           <span class="history-summary"><strong>${item.type}</strong> - ${item.summary}</span>
         </div>
       `).join('');
@@ -1941,24 +1938,11 @@
     // ===========================
     //    LEDGER LOGIC
     // ===========================
-    function getLedgerRows() {
-      if (!user) return [];
-      const key = getUserScopedKey(LEDGER_KEY);
-      const rows = readLocalArray(key);
-      return rows.sort((a, b) => new Date(b.date) - new Date(a.date));
-    }
-
-    function saveLedgerRows(rows) {
-      if (!user) return;
-      const key = getUserScopedKey(LEDGER_KEY);
-      writeLocalArray(key, rows);
-    }
-
     async function fetchLedger() {
       if (!user) return;
       const listEl = document.getElementById('ledgerList');
       try {
-        const rows = getLedgerRows();
+        const rows = await callAPI(`/api/ledger?user_id=${user.id}`);
         let totalIncome = 0;
         let totalExpense = 0;
 
@@ -2022,9 +2006,11 @@
       btn.disabled = true;
 
       try {
-        const rows = getLedgerRows();
-        rows.unshift(payload);
-        saveLedgerRows(rows.slice(0, 1000));
+        await callAPI('/api/ledger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, user_id: user.id })
+        });
         document.getElementById('ledgerForm').reset();
         document.getElementById('ledgerFormContainer').style.display = 'none';
         fetchLedger();
@@ -2039,8 +2025,11 @@
     async function deleteLedger(id) {
       if (!confirm('Are you sure you want to delete this transaction?')) return;
       try {
-        const rows = getLedgerRows().filter(r => Number(r.id) !== Number(id));
-        saveLedgerRows(rows);
+        await callAPI(`/api/ledger/${id}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id })
+        });
         fetchLedger();
       } catch (err) {
         alert(err.message);

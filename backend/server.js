@@ -21,9 +21,20 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 // ===========================
 //       DATABASE INIT
 // ===========================
-const db = new sqlite3.Database(path.join(__dirname, 'database.sqlite'), (err) => {
+const dbPath = path.join(__dirname, 'database.sqlite');
+const db = new sqlite3.Database(dbPath, (err) => {
   if (err) console.error('DB Open Error:', err.message);
-  else console.log('Connected to SQLite Database.');
+  else {
+    console.log('Connected to SQLite Database at:', dbPath);
+    // Verifying table existence and user count
+    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='users';", (err, row) => {
+       if (row) {
+         db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
+           if (!err && row) console.log(`Database initialized. Current user count: ${row.count}`);
+         });
+       }
+    });
+  }
 });
 
 db.serialize(() => {
@@ -54,6 +65,22 @@ db.serialize(() => {
   )`);
 });
 
+// Graceful Shut-down to ensure DB flushes
+process.on('SIGINT', () => {
+  db.close((err) => {
+    if (err) console.error(err.message);
+    console.log('Closed the database connection.');
+    process.exit(0);
+  });
+});
+
+// ===========================
+//       HELPERS
+// ===========================
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 // ===========================
 //       ENV VARIABLES
 // ===========================
@@ -77,6 +104,19 @@ console.log('Loaded GROQ KEY:', maskKey(GROQ_KEY));
 // ===========================
 app.post('/api/signup', (req, res) => {
   const { username, password, email } = req.body;
+
+  if (!username || !password || !email) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
   db.run(`INSERT INTO users (username, password, email) VALUES (?, ?, ?)`, [username, password, email], function(err) {
     if (err) {
       if (err.message.includes('UNIQUE constraint failed')) {
@@ -588,7 +628,6 @@ If a value is truly missing or unreadable, set it to null.`;
 
 // ===========================
 //          HISTORY
-
 // ===========================
 app.get('/api/history', (req, res) => {
   const { user_id } = req.query;
@@ -619,6 +658,7 @@ app.get('/api/ledger', (req, res) => {
 
 app.post('/api/ledger', (req, res) => {
   const { user_id, type, amount, category, description, date } = req.body;
+  if (!user_id) return res.status(400).json({ error: 'User ID required' });
   db.run(
     `INSERT INTO ledger (user_id, type, amount, category, description, date) VALUES (?, ?, ?, ?, ?, ?)`,
     [user_id, type, amount, category, description, date || new Date().toISOString()],
@@ -641,9 +681,6 @@ app.delete('/api/ledger/:id', (req, res) => {
 // ===========================
 //    MARKET INTELLIGENCE
 // ===========================
-// ===========================
-//    MARKET INTELLIGENCE
-// ===========================
 const MANDI_DATA = [
   { 
     commodity: 'Wheat', state: 'Punjab', market: 'Khanna', 
@@ -660,8 +697,7 @@ const MANDI_DATA = [
       { name: 'Haryana Warehousing Corp', contact: '+91 172-2703xxx', type: 'Government' },
       { name: 'Bharat Rice Mills', contact: '+91 94160-12xxx', type: 'Private' }
     ]
-  },
-  // ... (keeping some local fallback data)
+  }
 ];
 
 app.get('/api/mandi', (req, res) => {
