@@ -7,6 +7,7 @@ const fetch = require('node-fetch');
 const multer = require('multer');
 const sqlite3 = require('sqlite3').verbose();
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const app = express();
 
@@ -140,6 +141,14 @@ const transporter = nodemailer.createTransport({
   debug: true
 });
 
+// Initialize Resend (Modern API-based email)
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+let resend;
+if (RESEND_API_KEY) {
+  resend = new Resend(RESEND_API_KEY);
+  console.log('Resend Email API initialized.');
+}
+
 
 
 console.log('Loaded WEATHER KEY:', maskKey(WEATHER_KEY));
@@ -211,10 +220,51 @@ app.post('/api/forgot-password', (req, res) => {
 
       console.log(`Password reset requested for: ${email}`);
 
-      // If configured, send real email
-      if (EMAIL_USER && EMAIL_PASS) {
-        console.log(`Sending email to: ${email}...`);
+      // ==========================================
+      // EMAIL SENDING LOGIC (Resend First, then SMTP)
+      // ==========================================
+      if (RESEND_API_KEY && resend) {
+        console.log(`Attempting to send email via Resend to: ${email}...`);
+        try {
+          // IMPORTANT: On Resend Free Tier, you can ONLY send to your verified email.
+          // We will attempt to send, and catch any specific "domain not verified" errors.
+          const { data, error } = await resend.emails.send({
+            from: 'AgroMind Support <onboarding@resend.dev>', // Resend default for unverified domains
+            to: email,
+            subject: 'Password Reset Request - AgroMind',
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+                <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
+                <p>Hello,</p>
+                <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
+                </div>
+                <p>If the button doesn't work, copy and paste this link into your browser:</p>
+                <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
+                <p>This link will expire in 1 hour.</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
+              </div>
+            `
+          });
 
+          if (error) {
+            console.error('❌ Resend Error:', error.message);
+            throw new Error(`Resend Error: ${error.message}`);
+          }
+
+          console.log('✅ Resend Email Success:', data.id);
+          return res.json({ success: true, message: 'Reset email sent successfully via Resend API!' });
+        } catch (resendErr) {
+          console.error(`❌ Resend Failed:`, resendErr.message);
+          // Fall through to SMTP if Resend fails
+        }
+      }
+
+      // FALLBACK TO GMAIL SMTP
+      if (EMAIL_USER && EMAIL_PASS) {
+        console.log(`Attempting SMTP Fallback for: ${email}...`);
         try {
           await transporter.sendMail({
             from: `"AgroMind Support" <${EMAIL_USER}>`,
@@ -236,15 +286,15 @@ app.post('/api/forgot-password', (req, res) => {
               </div>
             `
           });
-          console.log('✅ Email Success:', email);
-          return res.json({ success: true, message: 'Reset email sent successfully! Please check your inbox.' });
+          console.log('✅ SMTP Email Success:', email);
+          return res.json({ success: true, message: 'Reset email sent successfully via SMTP!' });
         } catch (mailErr) {
-          console.error(`❌ Email Failed:`, mailErr.message);
-          return res.status(500).json({ error: `EMAIL ERROR: ${mailErr.message}` });
+          console.error(`❌ SMTP Failed:`, mailErr.message);
+          return res.status(500).json({ error: `EMAIL ERROR: SMTP Connection Failed. ${mailErr.message}` });
         }
-      } else {
-        return res.status(500).json({ error: 'ERROR: The server is missing EMAIL_USER or EMAIL_PASS environment variables.' });
       }
+
+      return res.status(500).json({ error: 'Email configuration is missing or failing on the server.' });
     });
   });
 });
