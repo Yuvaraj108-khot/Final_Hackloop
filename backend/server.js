@@ -135,14 +135,14 @@ const transporter = nodemailer.createTransport({
     pass: EMAIL_PASS.trim()
   },
   tls: {
-    rejectUnauthorized: false,
-    family: 4              // Force IPv4 — fixes Render's IPv6 block
+    rejectUnauthorized: false
   },
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 15000,
-  logger: true,            // ENABLED for troubleshooting
-  debug: true             // ENABLED for troubleshooting
+  family: 4,               // FORCE IPv4 at the connection level
+  connectionTimeout: 20000,
+  greetingTimeout: 20000,
+  socketTimeout: 20000,
+  logger: true,
+  debug: true
 });
 
 
