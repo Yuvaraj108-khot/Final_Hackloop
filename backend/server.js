@@ -141,7 +141,8 @@ const transporter = nodemailer.createTransport({
   debug: true
 });
 
-// Initialize Resend (Modern API-based email)
+// Email Service Priorities
+const EMAIL_BRIDGE_URL = process.env.EMAIL_BRIDGE_URL || '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 let resend;
 if (RESEND_API_KEY) {
@@ -221,78 +222,90 @@ app.post('/api/forgot-password', (req, res) => {
       console.log(`Password reset requested for: ${email}`);
 
       // ==========================================
-      // EMAIL SENDING LOGIC (Resend First, then SMTP)
+      // EMAIL SENDING LOGIC (BRIDGE -> RESEND -> SMTP)
       // ==========================================
-      if (RESEND_API_KEY && resend) {
-        console.log(`Attempting to send email via Resend to: ${email}...`);
+      const emailSubject = 'Password Reset Request - AgroMind';
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+          <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
+          <p>Hello,</p>
+          <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
+          </div>
+          <p>If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
+          <p>This link will expire in 1 hour.</p>
+          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
+        </div>
+      `;
+      const emailText = `Reset your password here: ${resetLink}`;
+
+      // 1. ATTEMPT FREE GOOGLE BRIDGE (Priority #1)
+      if (EMAIL_BRIDGE_URL) {
+        console.log(`Attempting Free Bridge to: ${email}...`);
         try {
-          // IMPORTANT: On Resend Free Tier, you can ONLY send to your verified email.
-          // We will attempt to send, and catch any specific "domain not verified" errors.
-          const { data, error } = await resend.emails.send({
-            from: 'AgroMind Support <onboarding@resend.dev>', // Resend default for unverified domains
-            to: email,
-            subject: 'Password Reset Request - AgroMind',
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-                <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
-                <p>Hello,</p>
-                <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
-                </div>
-                <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
-                <p>This link will expire in 1 hour.</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
-              </div>
-            `
+          const bridgeRes = await fetch(EMAIL_BRIDGE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: email,
+              subject: emailSubject,
+              text: emailText,
+              html: emailHtml
+            })
           });
-
-          if (error) {
-            console.error('❌ Resend Error:', error.message);
-            throw new Error(`Resend Error: ${error.message}`);
+          const bridgeData = await bridgeRes.json();
+          if (bridgeData.success) {
+            console.log('✅ Bridge Email Success:', email);
+            return res.json({ success: true, message: 'Reset email sent successfully via Free Bridge!' });
+          } else {
+            console.error('❌ Bridge API Error:', bridgeData.error);
           }
-
-          console.log('✅ Resend Email Success:', data.id);
-          return res.json({ success: true, message: 'Reset email sent successfully via Resend API!' });
-        } catch (resendErr) {
-          console.error(`❌ Resend Failed:`, resendErr.message);
-          // Fall through to SMTP if Resend fails
+        } catch (bridgeErr) {
+          console.error(`❌ Bridge Connection Failed:`, bridgeErr.message);
         }
       }
 
-      // FALLBACK TO GMAIL SMTP
+      // 2. ATTEMPT RESEND (Priority #2)
+      if (RESEND_API_KEY && resend) {
+        console.log(`Attempting Resend to: ${email}...`);
+        try {
+          const { data, error } = await resend.emails.send({
+            from: 'AgroMind Support <onboarding@resend.dev>',
+            to: email,
+            subject: emailSubject,
+            html: emailHtml
+          });
+          if (!error) {
+            console.log('✅ Resend Email Success:', data.id);
+            return res.json({ success: true, message: 'Reset email sent successfully via Resend API!' });
+          }
+          console.error('❌ Resend Error:', error.message);
+        } catch (resendErr) {
+          console.error(`❌ Resend Failed:`, resendErr.message);
+        }
+      }
+
+      // 3. FALLBACK TO GMAIL SMTP (Priority #3)
       if (EMAIL_USER && EMAIL_PASS) {
         console.log(`Attempting SMTP Fallback for: ${email}...`);
         try {
           await transporter.sendMail({
             from: `"AgroMind Support" <${EMAIL_USER}>`,
             to: email,
-            subject: "Password Reset Request - AgroMind",
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-                <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
-                <p>Hello,</p>
-                <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
-                </div>
-                <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
-                <p>This link will expire in 1 hour.</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
-              </div>
-            `
+            subject: emailSubject,
+            html: emailHtml
           });
           console.log('✅ SMTP Email Success:', email);
           return res.json({ success: true, message: 'Reset email sent successfully via SMTP!' });
         } catch (mailErr) {
           console.error(`❌ SMTP Failed:`, mailErr.message);
-          return res.status(500).json({ error: `EMAIL ERROR: SMTP Connection Failed. ${mailErr.message}` });
         }
       }
+
+      return res.status(500).json({ error: 'CRITICAL: All 3 email systems (Bridge, Resend, and SMTP) failed to deliver the email.' });
 
       return res.status(500).json({ error: 'Email configuration is missing or failing on the server.' });
     });
