@@ -125,13 +125,11 @@ const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
 const EMAIL_PORT = Number(process.env.EMAIL_PORT || 587);
 const BASE_URL = process.env.BASE_URL || '';
 
-// Determine if we should use secure connection (Port 587)
-const useSecure = EMAIL_PORT === 587;
-
+// Specialized Gmail configuration
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,           // false = STARTTLS (works on Render)
+  port: EMAIL_PORT,
+  secure: EMAIL_PORT === 465, // true for 465, false for other ports
   auth: {
     user: EMAIL_USER.trim(),
     pass: EMAIL_PASS.trim()
@@ -140,11 +138,11 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false,
     family: 4              // Force IPv4 — fixes Render's IPv6 block
   },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-  logger: false,           // Turn off noisy logs in production
-  debug: false
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 15000,
+  logger: true,            // ENABLED for troubleshooting
+  debug: true             // ENABLED for troubleshooting
 });
 
 
