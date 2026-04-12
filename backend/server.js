@@ -125,22 +125,17 @@ const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
 const EMAIL_PORT = Number(process.env.EMAIL_PORT || 587);
 const BASE_URL = process.env.BASE_URL || '';
 
-// Specialized Gmail configuration
+// Specialized Gmail configuration for Render
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: EMAIL_PORT,
-  secure: EMAIL_PORT === 465, // true for 465, false for other ports
+  service: 'gmail',
   auth: {
     user: EMAIL_USER.trim(),
-    pass: EMAIL_PASS.trim()
+    pass: EMAIL_PASS.replace(/\s+/g, '') // Remove all spaces for reliability
   },
-  tls: {
-    rejectUnauthorized: false
-  },
-  family: 4,               // FORCE IPv4 at the connection level
-  connectionTimeout: 20000,
-  greetingTimeout: 20000,
-  socketTimeout: 20000,
+  family: 4,               // FORCE IPv4
+  connectionTimeout: 25000,
+  greetingTimeout: 25000,
+  socketTimeout: 25000,
   logger: true,
   debug: true
 });
@@ -245,7 +240,7 @@ app.post('/api/forgot-password', (req, res) => {
           return res.json({ success: true, message: 'Reset email sent successfully! Please check your inbox.' });
         } catch (mailErr) {
           console.error(`❌ Email Failed:`, mailErr.message);
-          return res.status(500).json({ error: 'ERROR: Gmail rejected the email connection.' });
+          return res.status(500).json({ error: `EMAIL ERROR: ${mailErr.message}` });
         }
       } else {
         return res.status(500).json({ error: 'ERROR: The server is missing EMAIL_USER or EMAIL_PASS environment variables.' });
