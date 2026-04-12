@@ -118,11 +118,22 @@ const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
 const EMAIL_PORT = Number(process.env.EMAIL_PORT || 587);
 const BASE_URL = process.env.BASE_URL || '';
 
+// Determine if we should use secure connection (Port 465)
+const useSecure = EMAIL_PORT === 465;
+
 const transporter = nodemailer.createTransport({
   host: EMAIL_HOST,
   port: EMAIL_PORT,
-  secure: EMAIL_PORT === 465,
-  auth: { user: EMAIL_USER, pass: EMAIL_PASS }
+  secure: useSecure, 
+  auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+  connectionTimeout: 10000, 
+  greetingTimeout: 5000,
+  socketTimeout: 15000,
+  logger: true, // Enable logging to see what's happening in Render
+  debug: true,
+  tls: {
+    rejectUnauthorized: false // Helps avoid issues with cloud certificates
+  }
 });
 
 console.log('Loaded WEATHER KEY:', maskKey(WEATHER_KEY));
@@ -184,14 +195,20 @@ app.post('/api/forgot-password', (req, res) => {
     const expiry = Date.now() + 3600000; // 1 hour
 
     db.run(`UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?`, [token, expiry, email], async (err) => {
-      if (err) return res.status(500).json({ error: 'Failed to generate reset token' });
+      if (err) {
+        console.error('DB Update Error:', err);
+        return res.status(500).json({ error: 'Failed to generate reset token' });
+      }
       
       const host = BASE_URL || `http://${req.headers.host}`;
       const resetLink = `${host}/reset-password.html?token=${token}&email=${encodeURIComponent(email)}`;
       
+      console.log(`Password reset requested for: ${email}`);
+      
       // If configured, send real email
       if (EMAIL_USER && EMAIL_PASS) {
         try {
+          console.log(`Attempting to send email via ${EMAIL_HOST}...`);
           await transporter.sendMail({
             from: `"AgroMind Support" <${EMAIL_USER}>`,
             to: email,
@@ -212,14 +229,15 @@ app.post('/api/forgot-password', (req, res) => {
               </div>
             `
           });
+          console.log('Email sent successfully to:', email);
           return res.json({ success: true, message: 'Reset email sent successfully!' });
         } catch (mailErr) {
-          console.error('Mail Send Error:', mailErr);
-          // Fallback to demo mode if sending fails but creds were provided
+          console.error('CRITICAL Mail Send Error:', mailErr.message);
+          // Fall through to demo mode so user isn't stuck
         }
       }
 
-      // Fallback: Return the link for the developer/user to see (Demo Mode)
+      console.log('Falling back to Demo Mode for reset link.');
       res.json({ 
         success: true, 
         message: 'Password reset link generated (Demo Mode).',
