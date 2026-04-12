@@ -1043,6 +1043,7 @@
   <script src="utils.js"></script>
   <script>
     const HISTORY_KEY = 'fa_history';
+    const LEDGER_KEY = 'fa_ledger';
 
     function safeJSONParse(value, fallback) {
       if (!value || value === "null") return fallback;
@@ -1054,20 +1055,39 @@
       }
     }
 
+    function getUserScopedKey(baseKey) {
+      const uid = user && user.id ? user.id : 'guest';
+      return `${baseKey}_${uid}`;
+    }
+
+    function readLocalArray(key) {
+      const data = safeJSONParse(localStorage.getItem(key), []);
+      return Array.isArray(data) ? data : [];
+    }
+
+    function writeLocalArray(key, value) {
+      localStorage.setItem(key, JSON.stringify(Array.isArray(value) ? value : []));
+    }
+
     async function getHistory() {
       if (!user) return [];
-      try {
-        const rows = await callAPI(`/api/history?user_id=${user.id}`);
-        return rows.map(r => ({ ...r, at: r.created_at, payload: safeJSONParse(r.payload, {}) }));
-      } catch (e) {
-        console.error('History fetch failed:', e);
-        return [];
-      }
+      const key = getUserScopedKey(HISTORY_KEY);
+      const rows = readLocalArray(key);
+      return rows.sort((a, b) => new Date(b.at) - new Date(a.at));
     }
 
     async function addHistory(type, summary, payload) {
-      // History is now saved server-side during the analysis API call
-      // We just need to refresh the UI
+      if (!user) return;
+      const key = getUserScopedKey(HISTORY_KEY);
+      const rows = readLocalArray(key);
+      rows.unshift({
+        id: Date.now(),
+        type,
+        summary,
+        payload: payload || {},
+        at: new Date().toISOString()
+      });
+      writeLocalArray(key, rows.slice(0, 200));
       await renderHistory();
       await renderRecent();
     }
@@ -1827,11 +1847,9 @@
     });
     document.getElementById('goHomeBtn').addEventListener('click', () => window.location = 'index.html');
     document.getElementById('clearHistoryBtn').addEventListener('click', async () => {
-      await callAPI('/api/history', { 
-        method: 'DELETE', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id }) 
-      });
+      if (!user) return;
+      const key = getUserScopedKey(HISTORY_KEY);
+      localStorage.removeItem(key);
       renderHistory();
       renderRecent();
     });
@@ -1923,11 +1941,24 @@
     // ===========================
     //    LEDGER LOGIC
     // ===========================
+    function getLedgerRows() {
+      if (!user) return [];
+      const key = getUserScopedKey(LEDGER_KEY);
+      const rows = readLocalArray(key);
+      return rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+    }
+
+    function saveLedgerRows(rows) {
+      if (!user) return;
+      const key = getUserScopedKey(LEDGER_KEY);
+      writeLocalArray(key, rows);
+    }
+
     async function fetchLedger() {
       if (!user) return;
       const listEl = document.getElementById('ledgerList');
       try {
-        const rows = await callAPI(`/api/ledger?user_id=${user.id}`);
+        const rows = getLedgerRows();
         let totalIncome = 0;
         let totalExpense = 0;
 
@@ -1978,11 +2009,12 @@
     document.getElementById('ledgerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = {
-        user_id: user.id,
+        id: Date.now(),
         type: document.getElementById('ledgerType').value,
         amount: parseFloat(document.getElementById('ledgerAmount').value),
         category: document.getElementById('ledgerCategory').value,
-        description: document.getElementById('ledgerDesc').value
+        description: document.getElementById('ledgerDesc').value,
+        date: new Date().toISOString()
       };
       
       const btn = e.target.querySelector('button[type="submit"]');
@@ -1990,11 +2022,9 @@
       btn.disabled = true;
 
       try {
-        await callAPI('/api/ledger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        const rows = getLedgerRows();
+        rows.unshift(payload);
+        saveLedgerRows(rows.slice(0, 1000));
         document.getElementById('ledgerForm').reset();
         document.getElementById('ledgerFormContainer').style.display = 'none';
         fetchLedger();
@@ -2009,11 +2039,8 @@
     async function deleteLedger(id) {
       if (!confirm('Are you sure you want to delete this transaction?')) return;
       try {
-        await callAPI(`/api/ledger/${id}`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: user.id })
-        });
+        const rows = getLedgerRows().filter(r => Number(r.id) !== Number(id));
+        saveLedgerRows(rows);
         fetchLedger();
       } catch (err) {
         alert(err.message);
