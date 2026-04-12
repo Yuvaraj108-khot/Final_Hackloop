@@ -125,38 +125,29 @@ const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
 const EMAIL_PORT = Number(process.env.EMAIL_PORT || 587);
 const BASE_URL = process.env.BASE_URL || '';
 
-// Determine if we should use secure connection (Port 465)
-const useSecure = EMAIL_PORT === 465;
+// Determine if we should use secure connection (Port 587)
+const useSecure = EMAIL_PORT === 587;
 
-// Specialized Gmail configuration with IPv4 forced
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: EMAIL_PORT,
-  secure: EMAIL_PORT === 465,
+  port: 587,
+  secure: false,           // false = STARTTLS (works on Render)
   auth: {
     user: EMAIL_USER.trim(),
     pass: EMAIL_PASS.trim()
   },
-  tls: { rejectUnauthorized: false },
-  logger: true,
-  debug: true
+  tls: {
+    rejectUnauthorized: false,
+    family: 4              // Force IPv4 — fixes Render's IPv6 block
+  },
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
+  logger: false,           // Turn off noisy logs in production
+  debug: false
 });
 
-// TEST EMAIL ON STARTUP
-if (EMAIL_USER && EMAIL_PASS) {
-  console.log('--- STARTING EMAIL SYSTEM TEST ---');
-  transporter.sendMail({
-    from: EMAIL_USER,
-    to: EMAIL_USER, // Send a test to yourself
-    subject: "AgroMind - System Startup Test",
-    text: "If you are reading this, your AgroMind email system is WORKING PERFECTLY on Render!"
-  }).then(() => {
-    console.log('✅ STARTUP TEST SUCCESS: Email system is ready!');
-  }).catch(err => {
-    console.error('❌ STARTUP TEST FAILED:', err.message);
-    console.error('PRO TIP: If it says "Invalid Login", check your App Password or Gmail Security Alerts.');
-  });
-}
+
 
 console.log('Loaded WEATHER KEY:', maskKey(WEATHER_KEY));
 console.log('Loaded DISEASE KEY:', maskKey(DISEASE_KEY));
