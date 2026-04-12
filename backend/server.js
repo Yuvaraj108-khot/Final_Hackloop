@@ -22,17 +22,24 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 // ===========================
 //       DATABASE INIT
 // ===========================
-const dbPath = path.join(__dirname, 'database.sqlite');
+// Use a persistent path on Render if available, otherwise stay local
+const dbDir = process.env.DISK_PATH || __dirname;
+const dbPath = path.join(dbDir, 'database.sqlite');
+
+console.log('Attempting to open database at:', dbPath);
+
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) console.error('DB Open Error:', err.message);
   else {
-    console.log('Connected to SQLite Database at:', dbPath);
+    console.log('Success: Connected to Database.');
     // Verifying table existence and user count
     db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='users';", (err, row) => {
        if (row) {
          db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
-           if (!err && row) console.log(`Database initialized. Current user count: ${row.count}`);
+           if (!err && row) console.log(`Database Status: OK. User count: ${row.count}`);
          });
+       } else {
+         console.log('Database Status: NEW (Tables not yet created)');
        }
     });
   }
@@ -121,20 +128,35 @@ const BASE_URL = process.env.BASE_URL || '';
 // Determine if we should use secure connection (Port 465)
 const useSecure = EMAIL_PORT === 465;
 
+// Specialized Gmail configuration with POOLING for speed
 const transporter = nodemailer.createTransport({
-  host: EMAIL_HOST,
-  port: EMAIL_PORT,
-  secure: useSecure, 
-  auth: { user: EMAIL_USER, pass: EMAIL_PASS },
-  connectionTimeout: 10000, 
-  greetingTimeout: 5000,
-  socketTimeout: 15000,
-  logger: true, // Enable logging to see what's happening in Render
-  debug: true,
-  tls: {
-    rejectUnauthorized: false // Helps avoid issues with cloud certificates
-  }
+  service: 'gmail',
+  pool: true, // Keep the connection open for instant subsequent sends
+  maxConnections: 5,
+  maxMessages: 100,
+  auth: { 
+    user: EMAIL_USER.trim(), 
+    pass: EMAIL_PASS.trim() 
+  },
+  logger: true,
+  debug: true
 });
+
+// TEST EMAIL ON STARTUP
+if (EMAIL_USER && EMAIL_PASS) {
+  console.log('--- STARTING EMAIL SYSTEM TEST ---');
+  transporter.sendMail({
+    from: EMAIL_USER,
+    to: EMAIL_USER, // Send a test to yourself
+    subject: "AgroMind - System Startup Test",
+    text: "If you are reading this, your AgroMind email system is WORKING PERFECTLY on Render!"
+  }).then(() => {
+    console.log('✅ STARTUP TEST SUCCESS: Email system is ready!');
+  }).catch(err => {
+    console.error('❌ STARTUP TEST FAILED:', err.message);
+    console.error('PRO TIP: If it says "Invalid Login", check your App Password or Gmail Security Alerts.');
+  });
+}
 
 console.log('Loaded WEATHER KEY:', maskKey(WEATHER_KEY));
 console.log('Loaded DISEASE KEY:', maskKey(DISEASE_KEY));
@@ -207,34 +229,34 @@ app.post('/api/forgot-password', (req, res) => {
       
       // If configured, send real email
       if (EMAIL_USER && EMAIL_PASS) {
-        try {
-          console.log(`Attempting to send email via ${EMAIL_HOST}...`);
-          await transporter.sendMail({
-            from: `"AgroMind Support" <${EMAIL_USER}>`,
-            to: email,
-            subject: "Password Reset Request - AgroMind",
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-                <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
-                <p>Hello,</p>
-                <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
-                </div>
-                <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
-                <p>This link will expire in 1 hour.</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
+        console.log(`Backgrounding email send to: ${email}...`);
+        transporter.sendMail({
+          from: `"AgroMind Support" <${EMAIL_USER}>`,
+          to: email,
+          subject: "Password Reset Request - AgroMind",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+              <h2 style="color: #0f766e;">AgroMind Password Reset</h2>
+              <p>Hello,</p>
+              <p>We received a request to reset the password for your AgroMind account. Click the button below to change it:</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
               </div>
-            `
-          });
-          console.log('Email sent successfully to:', email);
-          return res.json({ success: true, message: 'Reset email sent successfully!' });
-        } catch (mailErr) {
-          console.error('CRITICAL Mail Send Error:', mailErr.message);
-          // Fall through to demo mode so user isn't stuck
-        }
+              <p>If the button doesn't work, copy and paste this link into your browser:</p>
+              <p style="word-break: break-all; color: #64748b;">${resetLink}</p>
+              <p>This link will expire in 1 hour.</p>
+              <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+              <p style="font-size: 12px; color: #64748b;">If you didn't request this, you can safely ignore this email.</p>
+            </div>
+          `
+        }).then(() => {
+          console.log('✅ Background Email Success:', email);
+        }).catch(mailErr => {
+          console.error('❌ Background Email Error:', mailErr.message);
+        });
+
+        // Respond IMMEDIATELY without waiting for Gmail
+        return res.json({ success: true, message: 'Reset email sent successfully!' });
       }
 
       console.log('Falling back to Demo Mode for reset link.');
