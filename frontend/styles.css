@@ -179,6 +179,7 @@ body {
   box-shadow: var(--shadow);
   border: 1px solid #f1f5f9;
   margin-bottom: 24px;
+  color: var(--text) !important;
 }
 
 .history-item {
