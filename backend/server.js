@@ -383,20 +383,32 @@ Return ONLY valid JSON:
 }
 `;
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages: [{ role: 'user', content: validationPrompt }],
-      model: 'llama-3.3-70b-versatile',
-      response_format: { type: 'json_object' },
-      temperature: 0.1
-    })
-  });
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: validationPrompt }],
+        model: 'llama-3.3-70b-versatile',
+        response_format: { type: 'json_object' },
+        temperature: 0.1
+      })
+    });
 
-  const data = await response.json();
-  if (!response.ok) throw new Error('Validation service unavailable');
-  return JSON.parse(data.choices[0].message.content);
+    const data = await response.json();
+    if (!response.ok) {
+      // Log the REAL Groq error so we can see it in Render logs
+      console.error('Groq Validation API Error:', JSON.stringify(data?.error || data));
+      // Soft-fail: numeric checks already passed above, so allow the request through
+      console.warn('AI crop/soil name validation skipped due to API error — proceeding with numeric validation only.');
+      return { valid: true, reason: '' };
+    }
+    return JSON.parse(data.choices[0].message.content);
+  } catch (fetchErr) {
+    console.error('Groq Validation Fetch Failed:', fetchErr.message);
+    // Soft-fail: don't block the soil analysis if validation network call fails
+    return { valid: true, reason: '' };
+  }
 }
 
 // Step 2: full analysis (only runs if valid)
@@ -464,13 +476,17 @@ Return ONLY valid JSON:
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Groq API call failed');
+    if (!response.ok) {
+      const groqMsg = data?.error?.message || JSON.stringify(data?.error) || 'Groq API call failed';
+      console.error('Groq Analysis Error:', groqMsg);
+      throw new Error(`AI analysis failed: ${groqMsg}`);
+    }
 
     const content = JSON.parse(data.choices[0].message.content);
     return { crop, soil_type, analysis: content.analysis, products: content.products, weather_context: weatherDesc, ai_powered: true };
   } catch (error) {
-    console.error('Groq Analysis Error:', error);
-    throw new Error('Failed to generate AI analysis. Please try again later.');
+    console.error('Groq Analysis Error:', error.message);
+    throw new Error(error.message || 'Failed to generate AI analysis. Please try again later.');
   }
 }
 
