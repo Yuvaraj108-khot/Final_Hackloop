@@ -87,6 +87,22 @@ db.serialize(() => {
     date DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
+
+  // Seed default test users so they are always available (even on ephemeral Render redeploys)
+  const defaultUsers = [
+    { username: 'yuvaraj', email: 'yuvaraj@agromind.com', password: 'yuvaraj123' },
+    { username: 'testuser', email: 'test@test.com', password: 'test123' }
+  ];
+
+  defaultUsers.forEach(u => {
+    db.get(`SELECT id FROM users WHERE email = ?`, [u.email], (err, row) => {
+      if (!row) {
+        db.run(`INSERT INTO users (username, email, password) VALUES (?, ?, ?)`, [u.username, u.email, u.password], (err) => {
+          if (!err) console.log(`Seeded default user: ${u.email}`);
+        });
+      }
+    });
+  });
 });
 
 // Graceful Shut-down to ensure DB flushes
