@@ -118,6 +118,8 @@ const PORT = Number(process.env.PORT || 4000);
 const WEATHER_KEY = process.env.WEATHER_API_KEY || '';
 const DISEASE_KEY = process.env.DISEASE_API_KEY || '';
 const GROQ_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
+const GROQ_VISION_MODEL = process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b';
 
 // EMAIL SETUP
 const EMAIL_USER = process.env.EMAIL_USER || '';
@@ -155,6 +157,8 @@ if (RESEND_API_KEY) {
 console.log('Loaded WEATHER KEY:', maskKey(WEATHER_KEY));
 console.log('Loaded DISEASE KEY:', maskKey(DISEASE_KEY));
 console.log('Loaded GROQ KEY:', maskKey(GROQ_KEY));
+console.log('Using GROQ MODEL:', GROQ_MODEL);
+console.log('Using GROQ VISION MODEL:', GROQ_VISION_MODEL);
 
 // ===========================
 //       AUTHENTICATION
@@ -389,7 +393,7 @@ Return ONLY valid JSON:
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: validationPrompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: GROQ_MODEL,
         response_format: { type: 'json_object' },
         temperature: 0.1
       })
@@ -469,7 +473,7 @@ Return ONLY valid JSON:
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: GROQ_MODEL,
         response_format: { type: 'json_object' },
         temperature: 0.2
       })
@@ -637,7 +641,7 @@ Return ONLY valid JSON:
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: GROQ_MODEL,
         response_format: { type: 'json_object' },
         temperature: 0.2
       })
@@ -712,7 +716,7 @@ If no products needed, set products to []. Use reputable products available in g
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        model: GROQ_VISION_MODEL,
         messages: [{
           role: 'user',
           content: [
@@ -958,7 +962,7 @@ Return ONLY valid JSON in this exact format:
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: GROQ_MODEL,
         response_format: { type: 'json_object' },
         temperature: 0.1
       })
@@ -1021,7 +1025,7 @@ Return ONLY JSON:
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.3-70b-versatile',
+        model: GROQ_MODEL,
         response_format: { type: 'json_object' },
         temperature: 0.0 // ZERO creativity, strictly literal results
       })
