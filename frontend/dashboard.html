@@ -858,7 +858,7 @@
           <!-- Water Requirement Inputs -->
           <div style="margin-top:20px;padding:16px 20px;background:#f0fdfa;border-radius:16px;border:1px solid #ccfbf1">
             <div style="font-size:14px;font-weight:700;color:var(--primary);margin-bottom:12px">💧 Water Requirement Inputs <span style="font-size:12px;font-weight:400;color:var(--text-muted)">(used for irrigation advice)</span></div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:16px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:16px">
               <div>
                 <label class="label">Planting Date <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
                 <input id="plantingDate" class="input" type="date">
@@ -870,6 +870,13 @@
               <div>
                 <label class="label">Farm Area (Acres)</label>
                 <input id="farmArea" class="input" type="number" step="0.01" placeholder="e.g. 2.5" value="1">
+              </div>
+              <div>
+                <label class="label">Location / City <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+                <div style="display:flex;gap:8px">
+                  <input id="soilCity" class="input" type="text" placeholder="e.g. Pune" style="margin-bottom:0">
+                  <button id="soilLocBtn" type="button" class="btn btn-ghost" style="padding:0 12px;height:45px" title="Use current location">📍</button>
+                </div>
               </div>
             </div>
           </div>
@@ -885,7 +892,7 @@
           <h2>Weather Intelligence</h2>
           <p class="small" style="margin-bottom: 24px">Precision data for your specific location</p>
           
-          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:32px">
+          <div class="weather-search-row">
             <div style="flex:1;min-width:240px">
               <label class="label">City Name</label>
               <input id="cityQuery" class="input" type="text" placeholder="e.g. Pune, Mumbai" style="margin:0">
@@ -1046,12 +1053,27 @@
     const LEDGER_KEY = 'fa_ledger';
 
     function safeJSONParse(value, fallback) {
-      if (!value || value === "null") return fallback;
       try {
         const parsed = JSON.parse(value);
         return parsed === null ? fallback : parsed;
       } catch (_) {
         return fallback;
+      }
+    }
+
+    async function getFallbackLocation() {
+      try {
+        const res = await fetch('https://ipapi.co/json/');
+        if (!res.ok) throw new Error('IP geolocation failed');
+        const data = await res.json();
+        return {
+          lat: data.latitude,
+          lon: data.longitude,
+          city: data.city
+        };
+      } catch (err) {
+        console.warn('IP-based geolocation fallback failed:', err);
+        return null;
       }
     }
 
@@ -1175,14 +1197,37 @@
       resultEl.innerHTML = '<div class="status-loading">🔍 Validating inputs...</div>';
       btn.disabled = true;
 
+      const cityEl = document.getElementById('soilCity');
+      const city = cityEl.value.trim();
+      let lat = cityEl.getAttribute('data-lat');
+      let lon = cityEl.getAttribute('data-lon');
+      
       let locationData = null;
-      try {
-        const pos = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-        });
-        locationData = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      } catch (e) {
-        console.warn('Geolocation unavailable:', e.message);
+      if (lat && lon && city) {
+        locationData = { lat: parseFloat(lat), lon: parseFloat(lon), city };
+      } else if (city) {
+        try {
+          const wData = await callAPI(`/api/weather?q=${encodeURIComponent(city)}`);
+          if (wData.city && wData.city.coord) {
+            locationData = { lat: wData.city.coord.lat, lon: wData.city.coord.lon, city: wData.city.name };
+          }
+        } catch (e) {
+          console.warn('Failed to resolve city for soil analysis:', e.message);
+        }
+      } else {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, enableHighAccuracy: false });
+          });
+          locationData = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        } catch (e) {
+          console.warn('GPS geolocation failed, trying IP fallback...', e.message);
+          const fallback = await getFallbackLocation();
+          if (fallback) {
+            locationData = { lat: fallback.lat, lon: fallback.lon, city: fallback.city };
+            console.log('IP fallback location retrieved for soil:', fallback);
+          }
+        }
       }
 
       try {
@@ -1383,11 +1428,21 @@
       let query = '';
       if (useGPS) {
         try {
-          const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej));
+          const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000, enableHighAccuracy: false }));
           query = `lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`;
         } catch (e) {
-          resultEl.innerHTML = '<div class="result-error">Location access denied. Please enter a city name manually.</div>';
-          return;
+          console.warn('GPS weather location failed, trying IP fallback...', e.message);
+          const fallback = await getFallbackLocation();
+          if (fallback) {
+            query = `lat=${fallback.lat}&lon=${fallback.lon}`;
+            if (fallback.city) {
+              document.getElementById('cityQuery').value = fallback.city;
+            }
+            console.log('IP fallback location retrieved for weather:', fallback);
+          } else {
+            resultEl.innerHTML = '<div class="result-error">Location access denied. Please enter a city name manually.</div>';
+            return;
+          }
         }
       } else {
         query = `q=${encodeURIComponent(q)}`;
@@ -1835,6 +1890,36 @@
 
     document.getElementById('soilReportFile').addEventListener('change', handleSoilReport);
     document.getElementById('soilBtn').addEventListener('click', runSoil);
+    document.getElementById('soilLocBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('soilLocBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳';
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, enableHighAccuracy: false });
+        });
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const data = await callAPI(`/api/weather?lat=${lat}&lon=${lon}`);
+        const city = data.city ? data.city.name : `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+        document.getElementById('soilCity').value = city;
+        document.getElementById('soilCity').setAttribute('data-lat', lat);
+        document.getElementById('soilCity').setAttribute('data-lon', lon);
+      } catch (err) {
+        console.warn('Soil GPS failed, trying IP fallback...', err.message);
+        const fallback = await getFallbackLocation();
+        if (fallback) {
+          document.getElementById('soilCity').value = fallback.city || '';
+          document.getElementById('soilCity').setAttribute('data-lat', fallback.lat);
+          document.getElementById('soilCity').setAttribute('data-lon', fallback.lon);
+        } else {
+          alert('Could not determine location. Please enter your city manually.');
+        }
+      } finally {
+        btn.textContent = '📍';
+        btn.disabled = false;
+      }
+    });
     document.getElementById('weatherCityBtn').addEventListener('click', () => runWeather(false));
     document.getElementById('weatherLocBtn').addEventListener('click', () => runWeather(true));
     document.getElementById('diseaseBtn').addEventListener('click', runDisease);

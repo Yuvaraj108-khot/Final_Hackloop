@@ -116,6 +116,7 @@ body {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 12px rgba(15, 118, 110, 0.25);
   gap: 8px;
+  white-space: nowrap;
 }
 
 .btn:hover {
@@ -138,6 +139,22 @@ body {
 .btn-ghost:hover {
   background: rgba(15, 118, 110, 0.05);
   border-color: var(--primary);
+}
+
+.weather-search-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 600px) {
+  .weather-search-row {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+    align-items: stretch;
+  }
 }
 
 .h1 {
